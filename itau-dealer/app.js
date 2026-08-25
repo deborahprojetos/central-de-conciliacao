@@ -331,6 +331,50 @@
     throw new Error('Não consegui iniciar o OCR do PDF. ' + (lastErr && lastErr.message ? lastErr.message : 'Recarregue a página e tente novamente.'));
   }
 
+
+  async function parseItauPdfWithWorker(file) {
+    const endpoint = window.OCR_WORKER_URL || "https://conciliacao-ocr.projetosdfb.workers.dev";
+    setStatus(els.fileStatus, `${file.name}: enviando PDF para OCR Worker...`);
+    const form = new FormData();
+    form.append('file', file, file.name);
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      body: form
+    });
+
+    if (!response.ok) {
+      throw new Error(`Worker OCR retornou erro HTTP ${response.status}.`);
+    }
+
+    setStatus(els.fileStatus, `${file.name}: Worker processando resultado OCR...`);
+    const data = await response.json();
+
+    const rows = Array.isArray(data.rows) ? data.rows :
+                 Array.isArray(data.result) ? data.result :
+                 Array.isArray(data.data) ? data.data : [];
+
+    if (!rows.length) {
+      throw new Error('Worker OCR concluiu, mas não retornou linhas reconhecidas.');
+    }
+
+    setStatus(els.fileStatus, `${file.name}: OCR Worker concluído (${rows.length} registros).`, 'ok');
+
+    return rows.map((r, i) => {
+      const parsed = C.parseBankTitle(r.yourNumber || r.seuNumero || r.numero || '');
+      return {
+        id: 'I' + (i + 1),
+        sourceRow: 'PDF OCR Worker',
+        payee: r.payee || r.pagador || r.nome || '',
+        yourNumber: r.yourNumber || r.seuNumero || r.numero || '',
+        note: parsed.note,
+        installment: parsed.installment,
+        date: r.date || r.data || '',
+        value: Number.isFinite(r.value) ? r.value : C.parseMoneyBR(String(r.value || r.valor || ''))
+      };
+    });
+  }
+
   async function parseItauPdfWithOcr(pdf, fileName) {
     await ensureTesseract();
 
@@ -451,7 +495,7 @@
 
     // Alguns PDFs emitidos pelo Itaú via “Microsoft Print to PDF” são somente imagem.
     // Nesses casos, cai automaticamente para OCR no navegador.
-    if (!unique.length) return parseItauPdfWithOcr(pdf, file.name);
+    if (!unique.length) return parseItauPdfWithWorker(file);
 
     return unique.map((r, i) => {
       const parsed = C.parseBankTitle(r.yourNumber);
