@@ -116,6 +116,7 @@
       const yourNumber = String(row[header.yourNumber] ?? '').trim();
       const value = parseMoneyBR(row[header.value]);
       const date = header.date >= 0 ? formatDateBR(row[header.date]) : '';
+      const history = String(row.find ? '' : '').trim();
       if (!payee && !yourNumber && !Number.isFinite(value)) continue;
       if (!payee || !yourNumber || !Number.isFinite(value)) continue;
 
@@ -130,7 +131,8 @@
         note,
         installment,
         date,
-        value: Math.round(value * 100) / 100
+        value: Math.round(value * 100) / 100,
+        status: history.toLowerCase().includes('liquid') ? 'Liquidado' : (history.toLowerCase().includes('baix') ? 'Baixado' : '')
       });
     }
 
