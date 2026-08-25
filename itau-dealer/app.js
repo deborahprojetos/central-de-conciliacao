@@ -333,7 +333,7 @@
 
 
   async function parseItauPdfWithWorker(file) {
-    const endpoint = window.OCR_WORKER_URL || "https://conciliacao-ocr.projetosdfb.workers.dev";
+    const endpoint = window.OCR_WORKER_URL || "https://conciliacao-ocr.projetosdcfb.workers.dev";
     setStatus(els.fileStatus, `${file.name}: enviando PDF para OCR Worker...`);
     const form = new FormData();
     form.append('file', file, file.name);
