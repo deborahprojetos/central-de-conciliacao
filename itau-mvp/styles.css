@@ -8,3 +8,14 @@
 .status-guide{display:flex;flex-wrap:wrap;gap:8px 14px;padding:14px 16px;border-bottom:1px solid var(--line,#e5e7eb);font-size:12px;color:#5b6472}.status-guide span{display:inline-flex;gap:5px;align-items:center}.toolbar.single{justify-content:flex-end}.toolbar.single input{max-width:360px}.value{color:#0f766e;font-weight:700}.partial{color:#b45309;font-weight:700}.review{color:#7c3aed;font-weight:700}
 
 .status-cell strong{display:block;white-space:nowrap}.status-cell small{display:block;margin-top:4px;font-weight:600;color:#667085;white-space:nowrap}td small{display:block;margin-top:3px;color:#667085;line-height:1.25}
+
+/* V25: filtro na mesma pagina, sem separar resultados em abas */
+.result-filters{align-items:flex-end;justify-content:flex-start;flex-wrap:wrap}.filter-field{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:750;color:#667085}.filter-field select,.filter-field input{height:38px;border:1px solid #d7dde6;border-radius:9px;padding:8px 10px;background:#fff;color:#172033;font:inherit;min-width:220px}.search-field{flex:1}.search-field input{width:100%;min-width:260px}.filter-clear{height:38px}.table-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;color:#667085;font-size:12px;border-top:1px solid #edf0f3}@media(max-width:850px){.result-filters{align-items:stretch}.filter-field,.filter-field select,.filter-field input,.filter-clear{width:100%;min-width:0}.table-footer{align-items:flex-start;flex-direction:column}}
+
+/* V26: feedback de arquivo e indicador de processamento somente quando ativo */
+.process-box.hidden,.file-info.hidden{display:none!important}
+.file-info{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border:1px solid #cfe4d7;background:#f4fbf6;border-radius:10px;color:#175c3a}
+.file-info .file-check{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:#dff3e7;font-weight:900;flex:0 0 auto}
+.file-info strong,.file-info small{display:block}.file-info strong{font-size:12px;max-width:440px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-info small{font-size:11px;color:#557062;margin-top:2px}
+.file.loaded{background:#eaf7ef;color:#175c3a;border:1px solid #c2e2ce}
+#message.success{color:#16734a;font-weight:750}#message.error{color:#a12a2a;font-weight:750}

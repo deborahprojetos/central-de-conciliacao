@@ -20,7 +20,7 @@ function updateAnalyzeState(){
 }
 function dms(v){if(typeof v==='number')return Number.isFinite(v)?v:NaN;let s=String(v??'').replace(/R\$/gi,'').replace(/\s/g,'').trim();if(!s)return NaN;const paren=/^\(.*\)$/.test(s);s=s.replace(/[()]/g,'');let sign=1;if(s.startsWith('-')){sign=-1;s=s.slice(1)}else if(s.startsWith('+'))s=s.slice(1);if(/\d{1,3}(\.\d{3})*,\d{2}$/.test(s)||/^\d+,\d{2}$/.test(s))s=s.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(,\d{3})*\.\d+$/.test(s))s=s.replace(/,/g,'');else if(/^\d+(?:\.\d+)?$/.test(s)){}else return NaN;const n=Number(s);return Number.isFinite(n)?(paren?-1:sign)*n:NaN}
 function dm(v){const n=dms(v);return Number.isFinite(n)?Math.abs(n):NaN}
-function dt(v){if(v instanceof Date)return v.toLocaleDateString('pt-BR');let s=String(v??'').trim(),m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);return m?`${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`:''}
+function dt(v){if(v instanceof Date&&!isNaN(v))return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();let s=String(v??'').trim(),m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);if(m)return `${m[3].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[1]}`;m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);return m?`${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`:''}
 function parseI(text){
  const lines=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean),out=[];
  lines.forEach((line,n)=>{
@@ -43,10 +43,39 @@ function parseI(text){
  return out
 }
 function mapD(rows){
- let h=(rows[0]||[]).map(x=>String(x??'').trim()),norm=x=>x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
- const find=(names)=>h.findIndex(x=>names.some(n=>norm(x)===norm(n)||norm(x).includes(norm(n))));
- let a=find(['TituloPessoaNome','Pessoa Nome','Fornecedor','Nome']),b=find(['TituloValor','Valor']),c=find(['TitDataMov','Data Movimento','Data']),cash=find(['TitMovDataCaixa','Data Caixa','Dt Caixa']),d=find(['TituloNumeroParcela','Nº - Parcela','Numero Parcela','Título']),cd=find(['TituloCDDescr','CD Descr','Tipo Movimento']),hist=find(['TituloHistorico','Histórico','Historico']),mult=find(['TituloMultiplicador','Multiplicador']);
- if(a<0||b<0) throw Error('Não encontrei as colunas de nome e valor no Excel do Dealer.');
+ const h=(rows[0]||[]).map(x=>String(x??'').trim());
+ const norm=x=>String(x??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+ const hn=h.map(norm);
+ // IMPORTANTE: procurar primeiro os nomes exatos e específicos. Nunca usar apenas
+ // "Nome" ou "Data" por substring, pois isso fazia TituloEmpresaNome ser lido
+ // no lugar de TituloPessoaNome e TituloDataVencto no lugar de TitDataMov.
+ const exact=(names)=>{
+   for(const n of names){const idx=hn.indexOf(norm(n));if(idx>=0)return idx;}
+   return -1;
+ };
+ const specificIncludes=(parts)=>{
+   for(const part of parts){const np=norm(part);const idx=hn.findIndex(x=>x.includes(np));if(idx>=0)return idx;}
+   return -1;
+ };
+ let a=exact(['TituloPessoaNome','Pessoa Nome','Fornecedor','Beneficiario','Sacado']);
+ if(a<0)a=specificIncludes(['titulo pessoa nome','pessoa nome']);
+ if(a<0)a=exact(['Nome']);
+ let b=exact(['TituloValor','Valor Titulo','Valor']);
+ if(b<0)b=specificIncludes(['titulo valor']);
+ let c=exact(['TitDataMov','Data Movimento','Dt Movimento']);
+ if(c<0)c=specificIncludes(['tit data mov','data movimento']);
+ let cash=exact(['TitMovDataCaixa','Data Caixa','Dt Caixa']);
+ if(cash<0)cash=specificIncludes(['tit mov data caixa','data caixa']);
+ let d=exact(['TituloNumeroParcela','Nº - Parcela','Numero Parcela','Nº Parcela']);
+ if(d<0)d=specificIncludes(['titulo numero parcela','numero parcela']);
+ let cd=exact(['TituloCDDescr','CD Descr','Tipo Movimento']);
+ if(cd<0)cd=specificIncludes(['titulo cd descr']);
+ let hist=exact(['TituloHistorico','Histórico','Historico']);
+ if(hist<0)hist=specificIncludes(['titulo historico']);
+ let mult=exact(['TituloMultiplicador','Multiplicador']);
+ if(mult<0)mult=specificIncludes(['titulo multiplicador']);
+ let personCode=exact(['TituloPessoaCod','Pessoa Cod','Codigo Pessoa']);
+ if(a<0||b<0) throw Error('Não encontrei TituloPessoaNome e TituloValor no Excel do Dealer.');
  return rows.slice(1).map((r,i)=>{
    const name=String(r[a]??'').trim(),value=dm(r[b]),movementDate=c>=0?dt(r[c]):'',cashDate=cash>=0?dt(r[cash]):'';
    const cdText=cd>=0?String(r[cd]??''):'',histText=hist>=0?String(r[hist]??''):'';
@@ -55,7 +84,8 @@ function mapD(rows){
    if((cdText||histText) && /recebimento de titulo/.test(classText))return null;
    if(cdText && !/pagamento de titulos/.test(classText))return null;
    if(Number.isFinite(multiplier) && multiplier>0)return null;
-   return {id:'D'+i,name,value,date:movementDate||cashDate,movementDate,cashDate,title:d>=0?String(r[d]??''):'',parcel:d>=0?String(r[d]??''):'',note:d>=0?String(r[d]??'').split('-')[0].replace(/\D/g,''):'',history:histText,cdDescr:cdText};
+   const parcel=d>=0?String(r[d]??''):'';
+   return {id:'D'+i,name,value,date:movementDate||cashDate,movementDate,cashDate,title:parcel,parcel,note:parcel.split(/[\/-]/)[0].replace(/\D/g,''),personCode:personCode>=0?String(r[personCode]??''):'',history:histText,cdDescr:cdText};
  }).filter(x=>x&&x.name&&Number.isFinite(x.value)&&x.value>0)
 }
 function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}
@@ -87,7 +117,12 @@ function render(){
  $('ko').textContent=closed;$('kd').textContent=pending;
  $('km').textContent=`${r.parcial.length} parciais · ${r.analisar.length} analisar · ${r.naoEncontrado.length} não encontrados`;
  let q=$('search').value.toUpperCase();
- let rows=r.all.filter(x=>!q||[...x.itau,...x.dealer].some(y=>((y.name||y.payee||'')+' '+(y.title||y.note||'')+' '+(y.document||y.taxId||'')).toUpperCase().includes(q)));
+ const selectedStatus=$('statusFilter').value;
+ const statusOrder={CONCILIADO:0,CONCILIADO_AGRUPADO:1,CONCILIADO_VALOR:2,ANALISAR_CONCILIACAO:3,ENCONTRADO_PARCIAL:4,NAO_ENCONTRADO:5};
+ let rows=r.all.filter(x=>{
+   if(selectedStatus && x.status!==selectedStatus)return false;
+   return !q||[...x.itau,...x.dealer].some(y=>((y.name||y.payee||'')+' '+(y.title||y.note||'')+' '+(y.document||y.taxId||'')).toUpperCase().includes(q));
+ }).sort((a,b)=>(statusOrder[a.status]??99)-(statusOrder[b.status]??99) || ((a.raw?._order??a.itau?.[0]?._order??999999)-(b.raw?._order??b.itau?.[0]?._order??999999)));
  $('body').innerHTML=rows.map(x=>{
    const i=x.itau.length?x.itau[0]:null,d=x.dealer.length?x.dealer[0]:null;
    const iv=x.itau.reduce((s,a)=>s+a.value,0),dv=x.dealer.reduce((s,a)=>s+a.value,0),diff=iv-dv;
@@ -102,7 +137,7 @@ function render(){
     <td class="${Math.abs(diff)>.01?'bad':'ok'}">${brl(diff)}</td>
     <td class="${statusClass(x.status)} status-cell">${statusCell(x)}</td>
    </tr>`}).join('');
- $('rowCount').textContent=`${rows.length} conciliações/ocorrências`;
+ $('rowCount').textContent=(rows.length===r.all.length)?`${rows.length} conciliações/ocorrências`:`${rows.length} de ${r.all.length} conciliações/ocorrências`;
 }
 function parseDealerTextInput(){
  let lines=$('dealerText').value.split(/\r?\n/).filter(Boolean),out=[];
@@ -110,9 +145,9 @@ function parseDealerTextInput(){
  return out;
 }
 $('itauText').oninput=()=>{try{S.i=parseI($('itauText').value);$('itauStatus').textContent=`${S.i.length} pagamentos reconhecidos · ${brl(S.i.reduce((s,x)=>s+x.value,0))}`}catch(e){S.i=[];$('itauStatus').textContent=$('itauText').value.trim()?e.message:'Aguardando dados.'}S.r=null;$('results').classList.add('hidden');updateAnalyzeState()};
-$('dealerFile').onchange=async e=>{let f=e.target.files[0];if(!f){S.d=[];updateAnalyzeState();return}try{let wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});S.d=mapD(rows);$('dealerStatus').textContent=`${S.d.length} movimentos reconhecidos · ${brl(S.d.reduce((s,x)=>s+x.value,0))}`}catch(e){S.d=[];$('dealerStatus').textContent=e.message||'Não foi possível ler o Excel do Dealer.'}S.r=null;$('results').classList.add('hidden');updateAnalyzeState()};
+$('dealerFile').onchange=async e=>{let f=e.target.files[0],label=$('dealerFileLabel'),labelText=$('dealerFileLabelText'),info=$('dealerFileInfo'),fileName=$('dealerFileName'),fileMeta=$('dealerFileMeta');if(!f){S.d=[];label.classList.remove('loaded');labelText.textContent='Selecionar Excel do Dealer';info.classList.add('hidden');updateAnalyzeState();return}label.classList.remove('loaded');labelText.textContent='Lendo Excel...';info.classList.add('hidden');try{let wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});S.d=mapD(rows);const total=brl(S.d.reduce((s,x)=>s+x.value,0));$('dealerStatus').textContent=`${S.d.length} movimentos reconhecidos · ${total}`;label.classList.add('loaded');labelText.textContent='✓ Excel carregado';fileName.textContent=f.name;fileMeta.textContent=`${S.d.length} movimentos reconhecidos · ${total}`;info.classList.remove('hidden')}catch(err){S.d=[];label.classList.remove('loaded');labelText.textContent='Selecionar Excel do Dealer';fileName.textContent=f.name;fileMeta.textContent='Não foi possível carregar este arquivo.';info.classList.remove('hidden');$('dealerStatus').textContent=err.message||'Não foi possível ler o Excel do Dealer.'}S.r=null;$('results').classList.add('hidden');updateAnalyzeState()};
 $('dealerText').oninput=()=>{S.d=parseDealerTextInput();$('dealerStatus').textContent=S.d.length?`${S.d.length} movimentos reconhecidos`:'Aguardando Excel ou dados do Dealer.';S.r=null;$('results').classList.add('hidden');updateAnalyzeState()};
-$('clear').onclick=()=>{$('itauText').value='';S.i=[];$('dealerText').value='';S.d=[];S.r=null;$('dealerFile').value='';$('itauStatus').textContent='Aguardando dados.';$('dealerStatus').textContent='Aguardando dados.';$('results').classList.add('hidden');$('processBox').classList.add('hidden');$('message').textContent='';updateAnalyzeState()};
+$('clear').onclick=()=>{$('itauText').value='';S.i=[];$('dealerText').value='';S.d=[];S.r=null;$('dealerFile').value='';$('dealerFileLabel').classList.remove('loaded');$('dealerFileLabelText').textContent='Selecionar Excel do Dealer';$('dealerFileInfo').classList.add('hidden');$('dealerFileName').textContent='Excel carregado';$('dealerFileMeta').textContent='Arquivo pronto para leitura.';$('itauStatus').textContent='Aguardando dados.';$('dealerStatus').textContent='Aguardando dados.';$('results').classList.add('hidden');$('processBox').classList.add('hidden');$('message').textContent='';$('message').className='';$('search').value='';$('statusFilter').value='';updateAnalyzeState()};
 $('analyze').onclick=async()=>{
  if(!S.i.length||!S.d.length){updateAnalyzeState();return;}
  const btn=$('analyze'),box=$('processBox'),title=$('processTitle'),detailBox=$('processDetail'),set=(t,d,cls='')=>{box.className='process-box '+cls;title.textContent=t;detailBox.textContent=d};
@@ -121,9 +156,13 @@ $('analyze').onclick=async()=>{
   set('Validando dados','Conferindo pagamentos do Itaú e movimentos do Dealer...');await new Promise(r=>setTimeout(r,40));
   set('Processando conciliação',`${S.i.length} pagamentos × ${S.d.length} movimentos. Testando correspondências e agrupamentos...`);await new Promise(r=>setTimeout(r,40));
   S.r=IntelligentReconciler.reconcile(S.i,S.d,{tolerance:.011,maxGroup:20,maxSubset:12});
-  set('Processamento concluído',`${S.r.conciliado.length+S.r.agrupado.length+S.r.valor.length} conciliados · ${S.r.parcial.length} encontrados parcialmente · ${S.r.analisar.length} para analisar.`,'done');$('message').textContent='Conciliação concluída.';render();
- }catch(e){set('Não foi possível concluir',e.message,'error');$('message').textContent=e.message}finally{updateAnalyzeState()}
+  $('message').className='success';$('message').textContent=`Conciliação concluída · ${S.r.conciliado.length+S.r.agrupado.length+S.r.valor.length} conciliados · ${S.r.parcial.length} parciais · ${S.r.analisar.length} para analisar.`;render();box.classList.add('hidden');
+ }catch(e){$('message').className='error';$('message').textContent=e.message;box.classList.add('hidden')}finally{updateAnalyzeState()}
 };
 $('search').oninput=render;
+$('statusFilter').onchange=render;
+$('clearFilters').onclick=()=>{$('search').value='';$('statusFilter').value='';render()};
+// Exposto apenas para validação técnica/regressão do parser.
+window.MVPParsers={parseItauText:parseI,mapDealerRows:mapD};
 updateAnalyzeState();
 })();

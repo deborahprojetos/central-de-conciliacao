@@ -905,19 +905,26 @@
       consume([p.i],[p.d],'partial','Encontrado parcial: mesma entidade/relação, valor diferente','1×1 · contraparte identificada · valor diferente');
     }
 
-    // 7) Último recurso: mesmo valor, nomes diferentes. Não é conciliação automática.
-    // Só formamos automaticamente um par quando o valor restante identifica um candidato único
-    // em cada lado. Duplicidades ambíguas não são pareadas ao acaso.
+    // 7) Último recurso por VALOR EXATO.
+    // Se, após todos os métodos mais fortes, sobrar exatamente UM registro de cada lado
+    // com o mesmo valor, classificamos como CONCILIADO VALOR. O status deixa explícito
+    // que a conclusão veio exclusivamente do valor, mesmo quando os nomes são diferentes.
+    // Quando o mesmo valor aparece repetido e não é possível determinar qual linha corresponde
+    // a qual, não escolhemos ao acaso: o conjunto fica em ANALISAR CONCILIAÇÃO.
     const reviewI=new Map(), reviewD=new Map();
     for(const i of I.filter(x=>!usedI.has(x.id))){const k=toC(i.value);if(!reviewI.has(k))reviewI.set(k,[]);reviewI.get(k).push(i);}
     for(const d of D.filter(x=>!usedD.has(x.id))){const k=toC(d.value);if(!reviewD.has(k))reviewD.set(k,[]);reviewD.get(k).push(d);}
     for(const [k,ib] of reviewI){
       const db=reviewD.get(k)||[];
       if(ib.length===1 && db.length===1){
-        consume(ib,db,'review','Analisar: mesmo valor com nomes diferentes','Mesmo valor · nomes diferentes · candidato único');
-      } else if(ib.length===db.length && ib.length>1){
-        // Há equivalência matemática do conjunto, mas não evidência suficiente para dizer qual linha é qual.
-        consume(ib,db,'review',`Analisar: ${ib.length} lançamentos de mesmo valor com nomes diferentes`,`${ib.length}×${db.length} · mesmo valor repetido · associação individual ambígua`);
+        consume(ib,db,'value','Conciliado pelo valor exato','1×1 · valor exato · nomes diferentes ou sem vínculo nominal suficiente');
+      } else if(ib.length && db.length){
+        // Há equivalência de valor, mas existe mais de um candidato em pelo menos um lado.
+        // Consolida apenas quando a quantidade também fecha; do contrário, preserva as sobras.
+        const n=Math.min(ib.length,db.length);
+        if(ib.length===db.length){
+          consume(ib,db,'review',`Analisar conciliação: ${ib.length} lançamentos com o mesmo valor e associação ambígua`,`${ib.length}×${db.length} · mesmo valor repetido · associação ambígua`);
+        }
       }
     }
 
