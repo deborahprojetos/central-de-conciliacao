@@ -1,7 +1,0 @@
-VALIDAÇÃO CIELO WEB v0.3
-
-{"titles":1422,"totalBaixa":259060.34,"notaDebito":10775.21,"cielo04":248285.13,"selecionado":{"auth":"324859","nsu":"500001","parcela":"1/2","original":34267.1,"residual":23491.89},"encoding":{"p1":"0102","v1":"+0000002349189","p2":"0202","v2":"+0000003426710"}}
-
-R$ 259.060,34 = R$ 10.775,21 Nota de Débito manual + R$ 248.285,13 CIELO04.
-Título 324859 / NSU 500001 / parcela 1/2: R$ 34.267,10 original -> R$ 23.491,89 no CIELO04.
-Parcela 2/2 permanece R$ 34.267,10.
