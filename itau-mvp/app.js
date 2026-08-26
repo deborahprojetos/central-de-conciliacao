@@ -36,6 +36,43 @@ function parseI(text){
  return out
 }
 function mapD(rows){let h=rows[0].map(x=>String(x??'').trim()),ix=n=>h.findIndex(x=>x.toLowerCase()===n.toLowerCase()),a=ix('TituloPessoaNome'),b=ix('TituloValor'),c=ix('TitDataMov'),d=ix('TituloNumeroParcela');return rows.slice(1).map((r,i)=>({id:'D'+i,name:String(r[a]??'').trim(),value:dm(r[b]),date:dt(r[c]),title:String(r[d]??'')})).filter(x=>x.name&&Number.isFinite(x.value))}
+
+function normName(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'')}
+function normId(v){return String(v??'').replace(/\D/g,'')}
+function keyDateValue(d,v){return `${d}|${Math.round((Number(v)||0)*100)}`}
+function fastReconcile(itau,dealer){
+  const tol=.01, used=new Set(), matches=[], differences=[], itauSem=[], dealerSem=[];
+  const byTax=new Map(), byDoc=new Map(), byDV=new Map(), byNameValue=new Map();
+  const add=(m,k,i)=>{if(!k)return;if(!m.has(k))m.set(k,[]);m.get(k).push(i)};
+  dealer.forEach((d,i)=>{
+    add(byTax,normId(d.taxId||d.cnpj||d.cpf),i);
+    add(byDoc,normId(d.title||d.documento||d.seuNumero),i);
+    add(byDV,keyDateValue(d.date,d.value),i);
+    add(byNameValue,`${normName(d.name)}|${Math.round(d.value*100)}`,i);
+  });
+  const take=(arr,it)=>{if(!arr)return null;for(const i of arr){if(!used.has(i)&&Math.abs(dealer[i].value-it.value)<=tol){used.add(i);return i}}return null};
+  const leftovers=[];
+  itau.forEach(it=>{
+    let di=take(byTax.get(normId(it.taxId)),it), method='CNPJ/CPF + valor';
+    if(di===null)di=take(byDoc.get(normId(it.account||it.documento)),it),method='Documento + valor';
+    if(di===null)di=take(byDV.get(keyDateValue(it.date,it.value)),it),method='Data + valor';
+    if(di===null)di=take(byNameValue.get(`${normName(it.name)}|${Math.round(it.value*100)}`),it),method='Nome + valor';
+    if(di!==null)matches.push({itau:[it],dealer:[dealer[di]],status:'CONCILIADO',type:method});
+    else leftovers.push(it);
+  });
+  const remaining=dealer.map((d,i)=>({d,i})).filter(x=>!used.has(x.i));
+  leftovers.forEach(it=>{
+    const cand=remaining.filter(x=>x.d.date===it.date).slice(0,40), target=Math.round(it.value*100);
+    let found=null;
+    function dfs(pos,sum,chosen){if(sum===target)return chosen;if(sum>target||chosen.length>=8)return null;for(let j=pos;j<cand.length;j++){if(used.has(cand[j].i))continue;const r=dfs(j+1,sum+Math.round(cand[j].d.value*100),chosen.concat(cand[j].i));if(r)return r}return null}
+    found=dfs(0,0,[]);
+    if(found){found.forEach(i=>used.add(i));matches.push({itau:[it],dealer:found.map(i=>dealer[i]),status:'CONCILIADO',type:'Agrupamento exato'});}
+    else{itauSem.push(it);differences.push({itau:[it],dealer:[],status:'NÃO LOCALIZADO NO DEALER',type:'Sem correspondência'});}
+  });
+  dealer.forEach((d,i)=>{if(!used.has(i))dealerSem.push(d)});
+  return {matches,differences,itauSem,dealerSem,all:matches.concat(differences,...dealerSem.map(d=>({itau:[],dealer:[d],status:'NÃO LOCALIZADO NO ITAÚ',type:'Sem correspondência'}))),totals:{itauCount:itau.length,itauValue:itau.reduce((s,x)=>s+x.value,0),dealerCount:dealer.length,dealerValue:dealer.reduce((s,x)=>s+x.value,0)}};
+}
+
 function render(){let r=S.r;if(!r)return;$('results').classList.remove('hidden');$('ki').textContent=r.totals.itauCount;$('kiv').textContent=brl(r.totals.itauValue);$('kde').textContent=r.totals.dealerCount;$('kdev').textContent=brl(r.totals.dealerValue);$('ko').textContent=r.matches.length;$('kd').textContent=r.differences.length+r.itauSem.length+r.dealerSem.length;$('km').textContent=`${r.itauSem.length} Itaú sem Dealer · ${r.dealerSem.length} Dealer sem Itaú`;let q=$('search').value.toUpperCase(),rows=r.all.filter(x=>S.v==='all'||S.v==='matched'&&x.status==='CONCILIADO'||S.v==='exceptions'&&x.status!=='CONCILIADO').filter(x=>!q||[...x.itau,...x.dealer].some(y=>(y.name+' '+(y.title||'')).toUpperCase().includes(q)));$('body').innerHTML=rows.map(x=>{let i=x.itau[0],iv=i?i.value:0,dv=x.dealer.reduce((s,d)=>s+d.value,0),diff=iv-dv;return `<tr><td>${i?.date||''}</td><td>${i?.name||x.dealer.map(d=>d.name).join(' + ')}</td><td>${i?.taxId||''}</td><td title="${(i?.history||'').replace(/"/g,'&quot;')}">${i?.history||''}</td><td>${brl(iv)}</td><td>${brl(dv)}</td><td class="${Math.abs(diff)>.01?'bad':'ok'}">${brl(diff)}</td><td class="${x.status==='CONCILIADO'?'ok':'bad'}">${x.status}</td></tr>`}).join('')}
 $('itauText').oninput=()=>{try{S.i=parseI($('itauText').value);$('itauStatus').textContent=`${S.i.length} pagamentos reconhecidos · ${brl(S.i.reduce((s,x)=>s+x.value,0))}`}catch(e){S.i=[];$('itauStatus').textContent=e.message}};
 $('dealerFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});S.d=mapD(rows);$('dealerStatus').textContent=`${S.d.length} movimentos reconhecidos · ${brl(S.d.reduce((s,x)=>s+x.value,0))}`}catch(e){$('dealerStatus').textContent='Não foi possível ler o Excel do Dealer.'}};
