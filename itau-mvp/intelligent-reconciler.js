@@ -1,188 +1,278 @@
-/* MVP - Motor de Conciliação Itaú x Dealer
- * Regras:
- * 1) 1x1 por valor
- * 2) 1xN / Nx1 por soma
- * 3) nomes aproximados por tokens relevantes
- * 4) datas com tolerância operacional
- * 5) divergência separada de não localizado
- * 6) não força correspondência
- */
-(function (root) {
+/* V18 - Cruzamento inteligente Itaú x Dealer
+   Objetivo: encontrar a baixa mesmo quando o banco agrupa pagamentos
+   e o Dealer desmembra títulos, sem depender do número do título.
+*/
+(() => {
   'use strict';
 
-  const STOP = new Set([
-    'SA','S.A','LTDA','EIRELI','ME','EPP','DE','DA','DO','DAS','DOS',
-    'INDUSTRIA','INDUSTRIAIS','COMERCIO','COMERCIO E SERVICOS',
-    'SERVICOS','SERVICO','EMPRESA','EMPRESARIAL','BRASIL','BR',
-    'CIA','COMPANHIA','BANCO','FUNDO','SAO','SANTA'
-  ]);
-
   const ALIASES = [
-    [/volkswagen/i, 'VOLKSWAGEN'],
-    [/lm\\s+transport/i, 'LM'],
-    [/receita|darf|secretaria\\s+da\\s+receita/i, 'RECEITA'],
-    [/cef|caixa\\s+economica/i, 'CAIXA'],
-    [/serpro/i, 'SERPRO'],
-    [/dealerspace/i, 'DEALERSPACE'],
-    [/dealerup/i, 'DEALERUP']
+    [/VOLKS?WAGEN/i, 'VOLKSWAGEN'],
+    [/LM\s+TRANSPORT/i, 'LM'],
+    [/RECEITA|DARF|SECRETARIA\s+DA\s+RECEITA/i, 'RECEITA'],
+    [/CEF|CAIXA\s+ECONOMICA/i, 'CAIXA'],
+    [/SERPRO|SERVICO\s+FEDERAL\s+DE\s+PROCESSAMENTO\s+DE\s+DADOS/i, 'SERPRO'],
+    [/DEALERUP/i, 'DEALERUP'],
+    [/DEALERSPACE/i, 'DEALERSPACE'],
+    [/IPOG|INSTITUTO\s+DE\s+POS/i, 'IPOG'],
+    [/OURO\s+VERDE/i, 'OURO VERDE'],
+    [/PROTECAO\s+COMERCIO/i, 'PROTECAO'],
   ];
 
-  function round2(v) { return Math.round((Number(v) + Number.EPSILON) * 100) / 100; }
-  function money(v) {
-    if (typeof v === 'number') return round2(v);
-    let s = String(v ?? '').replace(/R\\$/gi, '').replace(/\\s/g, '').trim();
+  const STOP = new Set([
+    'SA','S','A','S A','LTDA','EIRELI','ME','EPP','DE','DA','DO','DAS','DOS',
+    'INDUSTRIA','INDUSTRIAIS','COMERCIO','SERVICOS','SERVICO','EMPRESA',
+    'EMPRESARIAL','BRASIL','BR','CIA','COMPANHIA','MATRIZ','FILIAL',
+    'THE','AND','E'
+  ]);
+
+  const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+  const cents = n => Math.round(Number(n) * 100);
+  const abs = n => Math.abs(Number(n));
+
+  function normalize(s) {
+    return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toUpperCase().replace(/[^A-Z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+  }
+
+  function keyTokens(name) {
+    const n = normalize(name);
+    for (const [rx, key] of ALIASES) if (rx.test(n)) return new Set([key]);
+    return new Set(n.split(' ').filter(t => t.length >= 2 && !STOP.has(t)));
+  }
+
+  function nameScore(a,b) {
+    const A = keyTokens(a), B = keyTokens(b);
+    if (!A.size || !B.size) return 0;
+    let hit = 0;
+    for (const x of A) if (B.has(x)) hit++;
+    return hit / Math.max(A.size, B.size);
+  }
+
+  function parseMoney(v) {
+    if (typeof v === 'number' && Number.isFinite(v)) return round2(v);
+    let s = String(v ?? '').trim().replace(/R\$/gi,'').replace(/\s/g,'');
     if (!s) return NaN;
-    s = s.replace(/[()]/g, '');
-    let neg = /^-/.test(s);
-    s = s.replace(/^-/, '');
-    if (/\\d{1,3}(\\.\\d{3})*,\\d{2}$/.test(s) || /^\\d+,\\d{2}$/.test(s)) s = s.replace(/\\./g,'').replace(',','.');
-    else if (/\\d{1,3}(,\\d{3})*\\.\\d{2}$/.test(s)) s = s.replace(/,/g,'');
+    const neg = /^-/.test(s) || /^\(.*\)$/.test(s);
+    s = s.replace(/[()]/g,'').replace(/^-/,'');
+    if (/^\d{1,3}(\.\d{3})*,\d+$/.test(s) || /^\d+,\d+$/.test(s))
+      s = s.replace(/\./g,'').replace(',','.');
+    else if (/^\d{1,3}(,\d{3})*\.\d+$/.test(s))
+      s = s.replace(/,/g,'');
     const n = Number(s);
     return Number.isFinite(n) ? round2(neg ? -n : n) : NaN;
   }
-  function normalize(s) {
-    return String(s ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'')
-      .toUpperCase().replace(/[^A-Z0-9]+/g,' ').replace(/\\s+/g,' ').trim();
+
+  function dateKey(v) {
+    const m = String(v ?? '').match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+    if (!m) return NaN;
+    return Date.UTC(+m[3], +m[2]-1, +m[1]) / 86400000;
   }
-  function tokens(name) {
-    const n = normalize(name);
-    for (const [rx, key] of ALIASES) if (rx.test(n)) return new Set([key]);
-    return new Set(n.split(' ').filter(x => x.length >= 2 && !STOP.has(x)));
-  }
-  function similarity(a,b) {
-    const A=tokens(a), B=tokens(b);
-    if (!A.size || !B.size) return 0;
-    let hit=0; for (const x of A) if (B.has(x)) hit++;
-    return hit / Math.max(A.size,B.size);
-  }
-  function day(s) {
-    const m=String(s??'').match(/(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})/);
-    if(!m) return NaN;
-    return Date.UTC(+m[3],+m[2]-1,+m[1])/86400000;
-  }
+
   function dateDistance(a,b) {
-    const A=day(a),B=day(b);
-    return Number.isFinite(A)&&Number.isFinite(B)?Math.abs(A-B):Infinity;
+    const A=dateKey(a), B=dateKey(b);
+    return Number.isFinite(A)&&Number.isFinite(B) ? Math.abs(A-B) : Infinity;
   }
 
-  function combinations(items, maxSize, target, tolerance, maxCandidates=80) {
-    const out=[];
-    const sorted=items.slice().sort((a,b)=>Math.abs(a.value-target)-Math.abs(b.value-target)).slice(0,maxCandidates);
-    function walk(start, chosen, sum) {
-      if (chosen.length > maxSize) return;
-      const diff=Math.abs(round2(sum-target));
-      if (chosen.length && diff <= tolerance) { out.push({items:chosen.slice(),diff}); return; }
-      if (chosen.length === maxSize) return;
-      for(let i=start;i<sorted.length;i++) {
-        const next=round2(sum+sorted[i].value);
-        if (next > target+tolerance) continue;
-        walk(i+1, chosen.concat(sorted[i]), next);
-      }
-    }
-    walk(0,[],0);
-    out.sort((a,b)=>a.diff-b.diff || a.items.length-b.items.length);
-    return out[0] || null;
-  }
-
-  function makeRows(rows, side) {
-    return (rows||[]).map((r,i)=>({
-      id: r.id || side[0]+(i+1),
+  function normalizeRows(rows, side) {
+    return (rows || []).map((r,i) => ({
+      id: r.id || side + (i+1),
       name: String(r.name ?? r.payee ?? r.pagador ?? r.nome ?? '').trim(),
-      value: Math.abs(money(r.value ?? r.valor ?? r['Valor (R$)'] ?? r.TituloValor)),
-      date: String(r.date ?? r.data ?? r.dataPagamento ?? r['Data'] ?? '').trim(),
-      original:r
-    })).filter(r=>r.name && Number.isFinite(r.value));
+      value: abs(parseMoney(r.value ?? r.valor ?? r['Valor (R$)'] ?? r.TituloValor)),
+      date: String(r.date ?? r.data ?? r.TitDataMov ?? '').trim(),
+      original: r
+    })).filter(r => r.name && Number.isFinite(r.value));
   }
 
-  function reconcile(itauInput, dealerInput, options={}) {
-    const tolerance = options.tolerance ?? 0.01;
-    const nameThreshold = options.nameThreshold ?? 0.25;
-    const maxGroup = options.maxGroup ?? 6;
+  function total(items) { return round2(items.reduce((s,x)=>s+x.value,0)); }
 
-    const I=makeRows(itauInput,'I');
-    const D=makeRows(dealerInput,'D');
-    const usedI=new Set(), usedD=new Set();
-    const matches=[], differences=[];
+  /*
+   * Procura subconjunto exato com poda.
+   * Primeiro privilegia datas próximas; depois tamanho menor.
+   * É usado somente para itens ainda não conciliados.
+   */
+  function findCombination(pool, target, maxSize, tolerance, preferDate) {
+    const targetC = cents(target);
+    const ordered = pool.slice().sort((a,b) => {
+      const ad = preferDate ? dateDistance(preferDate,a.date) : Infinity;
+      const bd = preferDate ? dateDistance(preferDate,b.date) : Infinity;
+      return ad-bd || Math.abs(b.value-a.value)-Math.abs(a.value-target);
+    }).slice(0, 100);
 
-    function score(i, ds) {
-      const total=round2(ds.reduce((s,x)=>s+x.value,0));
-      const diff=round2(i.value-total);
-      const sims=ds.map(d=>similarity(i.name,d.name));
-      const sim=Math.max(...sims,0);
-      const dd=Math.min(...ds.map(d=>dateDistance(i.date,d.date)),Infinity);
-      return {total,diff,sim,dd};
-    }
+    let best = null;
+    const seen = new Set();
 
-    // Passo 1: 1x1 por valor e nome/data.
-    for (const i of I) {
-      const candidates=D.filter(d=>!usedD.has(d.id) && Math.abs(d.value-i.value)<=tolerance)
-        .map(d=>({d,sim:similarity(i.name,d.name),dd:dateDistance(i.date,d.date)}))
-        .sort((a,b)=>b.sim-a.sim || a.dd-b.dd);
-      if(candidates.length && (candidates[0].sim>=nameThreshold || candidates[0].dd<=1 || candidates.length===1)){
-        const d=candidates[0].d; usedI.add(i.id); usedD.add(d.id);
-        matches.push({itau:[i],dealer:[d],status:'CONCILIADO',type:'1x1',difference:0,confidence:candidates[0].sim});
-      }
-    }
-
-    // Passo 2: Itaú 1xN, somando Dealer.
-    for (const i of I) {
-      if(usedI.has(i.id)) continue;
-      const pool=D.filter(d=>!usedD.has(d.id));
-      const related=pool.filter(d=>similarity(i.name,d.name)>=nameThreshold || tokens(i.name).size && [...tokens(i.name)].some(t=>tokens(d.name).has(t)));
-      const candidates=related.length?related:pool;
-      const combo=combinations(candidates, maxGroup, i.value, tolerance);
-      if(combo){
-        const s=score(i,combo.items);
-        const nameOk=s.sim>=nameThreshold || combo.items.some(d=>similarity(i.name,d.name)>=nameThreshold);
-        if(nameOk || combo.items.length>1){
-          combo.items.forEach(d=>usedD.add(d.id)); usedI.add(i.id);
-          matches.push({itau:[i],dealer:combo.items,status:'CONCILIADO',type:'1xN',difference:0,confidence:s.sim});
+    function dfs(start, sum, chosen) {
+      const diff = Math.abs(sum-targetC);
+      if (chosen.length && diff <= Math.round(tolerance*100)) {
+        const ids = chosen.map(x=>x.id).sort().join(',');
+        if (!seen.has(ids)) {
+          seen.add(ids);
+          const datePenalty = chosen.reduce((s,x)=>{
+            const d=preferDate ? dateDistance(preferDate,x.date) : 0;
+            return s + (Number.isFinite(d) ? d : 2);
+          },0);
+          const score = diff*1000 + chosen.length*10 + datePenalty;
+          if (!best || score < best.score) best={items:chosen.slice(),diff:diff/100,score};
         }
+        return;
+      }
+      if (chosen.length >= maxSize || sum > targetC + Math.round(tolerance*100)) return;
+
+      for (let i=start;i<ordered.length;i++) {
+        const v=cents(ordered[i].value);
+        const next=sum+v;
+        if (next > targetC + Math.round(tolerance*100)) continue;
+        dfs(i+1,next,chosen.concat(ordered[i]));
       }
     }
 
-    // Passo 3: Dealer 1xN contra vários Itaú.
-    for (const d of D) {
+    dfs(0,0,[]);
+    return best;
+  }
+
+  function exactSingles(I,D,usedI,usedD,matches) {
+    const byValue = new Map();
+    D.forEach(d=>{
+      const k=cents(d.value);
+      if(!byValue.has(k)) byValue.set(k,[]);
+      byValue.get(k).push(d);
+    });
+
+    for(const i of I){
+      if(usedI.has(i.id)) continue;
+      const candidates=(byValue.get(cents(i.value))||[])
+        .filter(d=>!usedD.has(d.id))
+        .sort((a,b)=>nameScore(i.name,b.name)-nameScore(i.name,a.name)
+          || dateDistance(i.date,a.date)-dateDistance(i.date,b.date));
+      if(!candidates.length) continue;
+
+      const d=candidates[0];
+      usedI.add(i.id); usedD.add(d.id);
+      const sim=nameScore(i.name,d.name);
+      matches.push({
+        itau:[i], dealer:[d], status:'CONCILIADO',
+        type:sim>=0.25?'Valor + nome aproximado':'Valor exato',
+        difference:0, confidence:sim
+      });
+    }
+  }
+
+  function groupedOneToMany(I,D,usedI,usedD,matches) {
+    for(const i of I){
+      if(usedI.has(i.id)) continue;
+
+      const pool=D.filter(d=>!usedD.has(d.id));
+      if(!pool.length) continue;
+
+      // Primeiro: candidatos semanticamente relacionados.
+      const related=pool.filter(d=>nameScore(i.name,d.name)>=0.25);
+      let combo=findCombination(related,i.value,8,0.01,i.date);
+
+      let type='Agrupamento 1×N por nome + valor';
+
+      // Segundo: se o nome não ajudar, procura a soma no conjunto geral,
+      // respeitando proximidade de data. Isso captura BANCO VOLKSWAGEN -> LM.
+      if(!combo){
+        const nearDate=pool.filter(d=>{
+          const dd=dateDistance(i.date,d.date);
+          return !Number.isFinite(dd) || dd<=3;
+        });
+        combo=findCombination(nearDate,i.value,8,0.01,i.date);
+        if(combo) type='Agrupamento 1×N por valor/data';
+      }
+
+      if(combo){
+        combo.items.forEach(d=>usedD.add(d.id));
+        usedI.add(i.id);
+        const sim=Math.max(0,...combo.items.map(d=>nameScore(i.name,d.name)));
+        matches.push({
+          itau:[i], dealer:combo.items, status:'CONCILIADO',
+          type, difference:0, confidence:sim
+        });
+      }
+    }
+  }
+
+  function groupedManyToOne(I,D,usedI,usedD,matches) {
+    for(const d of D){
       if(usedD.has(d.id)) continue;
       const pool=I.filter(i=>!usedI.has(i.id));
-      const related=pool.filter(i=>similarity(i.name,d.name)>=nameThreshold || [...tokens(d.name)].some(t=>tokens(i.name).has(t)));
-      const candidates=related.length?related:pool;
-      const combo=combinations(candidates,maxGroup,d.value,tolerance);
+      const related=pool.filter(i=>nameScore(i.name,d.name)>=0.25);
+      let combo=findCombination(related,d.value,8,0.01,d.date);
+      let type='Agrupamento N×1 por nome + valor';
+
+      if(!combo){
+        const nearDate=pool.filter(i=>{
+          const dd=dateDistance(i.date,d.date);
+          return !Number.isFinite(dd)||dd<=3;
+        });
+        combo=findCombination(nearDate,d.value,8,0.01,d.date);
+        if(combo) type='Agrupamento N×1 por valor/data';
+      }
+
       if(combo){
-        const sim=Math.max(...combo.items.map(i=>similarity(i.name,d.name)),0);
-        if(sim>=nameThreshold || combo.items.length>1){
-          combo.items.forEach(i=>usedI.add(i.id)); usedD.add(d.id);
-          matches.push({itau:combo.items,dealer:[d],status:'CONCILIADO',type:'Nx1',difference:0,confidence:sim});
-        }
+        combo.items.forEach(i=>usedI.add(i.id));
+        usedD.add(d.id);
+        const sim=Math.max(0,...combo.items.map(i=>nameScore(i.name,d.name)));
+        matches.push({
+          itau:combo.items, dealer:[d], status:'CONCILIADO',
+          type, difference:0, confidence:sim
+        });
       }
     }
+  }
 
-    // Passo 4: encontra provável correspondência com diferença de valor.
-    for (const i of I) {
+  function differences(I,D,usedI,usedD,out) {
+    for(const i of I){
       if(usedI.has(i.id)) continue;
-      const cand=D.filter(d=>!usedD.has(d.id))
-        .map(d=>({d,sim:similarity(i.name,d.name),dd:dateDistance(i.date,d.date),diff:Math.abs(i.value-d.value)}))
-        .filter(x=>x.sim>=nameThreshold && x.dd<=3)
-        .sort((a,b)=>a.diff-b.diff || b.sim-a.sim)[0];
-      if(cand){
-        usedI.add(i.id); usedD.add(cand.d.id);
-        differences.push({itau:[i],dealer:[cand.d],status:'DIVERGENCIA',type:'1x1',difference:round2(i.value-cand.d.value),confidence:cand.sim});
+      const candidates=D.filter(d=>!usedD.has(d.id))
+        .map(d=>({d,sim:nameScore(i.name,d.name),dd:dateDistance(i.date,d.date),diff:abs(i.value-d.value)}))
+        .filter(x=>x.sim>=0.25 && (!Number.isFinite(x.dd)||x.dd<=3))
+        .sort((a,b)=>a.diff-b.diff || b.sim-a.sim || a.dd-b.dd);
+
+      if(candidates.length){
+        const c=candidates[0];
+        usedI.add(i.id); usedD.add(c.d.id);
+        out.push({
+          itau:[i],dealer:[c.d],status:'DIVERGENCIA',
+          type:'Nome relacionado + valor diferente',
+          difference:round2(i.value-c.d.value),confidence:c.sim
+        });
       }
     }
+  }
 
-    const itauSem=I.filter(x=>!usedI.has(x.id)).map(i=>({itau:[i],dealer:[],status:'ITAU_SEM_DEALER',difference:i.value}));
-    const dealerSem=D.filter(x=>!usedD.has(x.id)).map(d=>({itau:[],dealer:[d],status:'DEALER_SEM_ITAU',difference:-d.value}));
+  function reconcile(itauInput,dealerInput,options={}) {
+    const I=normalizeRows(itauInput,'I');
+    const D=normalizeRows(dealerInput,'D');
+    const usedI=new Set(), usedD=new Set();
+    const matches=[], diffs=[];
+
+    exactSingles(I,D,usedI,usedD,matches);
+    groupedOneToMany(I,D,usedI,usedD,matches);
+    groupedManyToOne(I,D,usedI,usedD,matches);
+    differences(I,D,usedI,usedD,diffs);
+
+    const itauSem=I.filter(i=>!usedI.has(i.id)).map(i=>({
+      itau:[i],dealer:[],status:'ITAU_SEM_DEALER',
+      type:'Nenhuma correspondência encontrada',difference:round2(i.value)
+    }));
+    const dealerSem=D.filter(d=>!usedD.has(d.id)).map(d=>({
+      itau:[],dealer:[d],status:'DEALER_SEM_ITAU',
+      type:'Nenhuma correspondência encontrada',difference:round2(-d.value)
+    }));
 
     return {
+      matches,differences:diffs,itauSem,dealerSem,
+      all:[...matches,...diffs,...itauSem,...dealerSem],
       totals:{
-        itauCount:I.length, dealerCount:D.length,
-        itauValue:round2(I.reduce((s,x)=>s+x.value,0)),
-        dealerValue:round2(D.reduce((s,x)=>s+x.value,0))
-      },
-      matches, differences, itauSem, dealerSem,
-      all:[...matches,...differences,...itauSem,...dealerSem]
+        itauCount:I.length,
+        itauValue:total(I),
+        dealerCount:D.length,
+        dealerValue:total(D)
+      }
     };
   }
 
-  root.IntelligentReconciler = { reconcile, money, normalize, similarity };
-})(typeof window!=='undefined'?window:this);
+  window.IntelligentReconciler={reconcile,normalize,nameScore,parseMoney};
+})();
