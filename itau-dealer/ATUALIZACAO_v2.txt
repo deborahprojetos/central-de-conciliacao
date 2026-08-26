@@ -1,0 +1,1 @@
+Atualização Itaú: preparação para status Baixado/Liquidado e compatibilidade com PDFs Microsoft Print to PDF.
