@@ -2,26 +2,35 @@
 'use strict';
 const $=id=>document.getElementById(id),S={i:[],d:[],r:null,v:'all'};
 const brl=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n||0);
+const statusLabel=s=>({CONCILIADO:'Conciliado',DIVERGENCIA:'Divergência',ANALISAR:'Analisar',ITAU_SEM_DEALER:'Itaú sem Dealer',DEALER_SEM_ITAU:'Dealer sem Itaú'}[s]||s);
+const statusClass=s=>s==='CONCILIADO'?'ok':s==='DIVERGENCIA'?'warn':s==='ANALISAR'?'review':'bad';
 const analyzeBtn=$('analyze');
 
 function updateAnalyzeState(){
   analyzeBtn.disabled=!(S.i.length>0 && S.d.length>0);
   if(analyzeBtn.disabled && !S.i.length && !S.d.length) $('message').textContent='';
 }
-function dm(v){if(typeof v==='number')return Math.abs(v);let s=String(v??'').replace(/R\$/gi,'').replace(/\s/g,'');if(!s)return NaN;s=s.replace(/[()]/g,'').replace(/^-/,'');if(/\d{1,3}(\.\d{3})*,\d{2}$/.test(s)||/^\d+,\d{2}$/.test(s))s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'');return Math.abs(Number(s))}
+function dms(v){if(typeof v==='number')return Number.isFinite(v)?v:NaN;let s=String(v??'').replace(/R\$/gi,'').replace(/\s/g,'').trim();if(!s)return NaN;const paren=/^\(.*\)$/.test(s);s=s.replace(/[()]/g,'');let sign=1;if(s.startsWith('-')){sign=-1;s=s.slice(1)}else if(s.startsWith('+'))s=s.slice(1);if(/\d{1,3}(\.\d{3})*,\d{2}$/.test(s)||/^\d+,\d{2}$/.test(s))s=s.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(,\d{3})*\.\d+$/.test(s))s=s.replace(/,/g,'');else if(/^\d+(?:\.\d+)?$/.test(s)){}else return NaN;const n=Number(s);return Number.isFinite(n)?(paren?-1:sign)*n:NaN}
+function dm(v){const n=dms(v);return Number.isFinite(n)?Math.abs(n):NaN}
 function dt(v){if(v instanceof Date)return v.toLocaleDateString('pt-BR');let s=String(v??'').trim(),m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);return m?`${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`:''}
 function parseI(text){
  const lines=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean),out=[];
  lines.forEach((line,n)=>{
    let c=line.includes('\t')?line.split('\t'):line.includes('|')?line.split('|'):line.includes(';')?line.split(';'):[line];
    c=c.map(x=>String(x??'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim());
-   const dates=c.map(dt).filter(Boolean),nums=c.map(dm).filter(x=>Number.isFinite(x)&&x!==0);
-   if(!dates.length||!nums.length)return;
-   const value=nums[nums.length-1],date=dates[0],history=c[1]||'',account=c[2]||'';
-   const name=c[3]||c.find(x=>x&&!dt(x)&&!Number.isFinite(dm(x)))||line;
+   const dates=c.map(dt).filter(Boolean),signedNums=c.map(dms).filter(x=>Number.isFinite(x)&&x!==0);
+   if(!dates.length||!signedNums.length)return;
+   const signedValue=signedNums[signedNums.length-1],date=dates[0],history=c[1]||'',account=c[2]||'';
+   const h=String(history).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+   const creditLike=/recebimento|recebimentos|entrada pix|dep din|deposito|boleto recebido|cielo/.test(h);
+   const paymentLike=/pagamento|pagamentos|sispag tributos|pag tit|tributo|darf/.test(h);
+   // Este módulo é de PAGAMENTOS. Entradas/recebimentos nunca podem virar "Itaú sem Dealer".
+   if(creditLike || (signedValue>0 && !paymentLike))return;
+   const value=Math.abs(signedValue);
+   const name=c[3]||c.find(x=>x&&!dt(x)&&!Number.isFinite(dms(x)))||line;
    const taxId=(c[4]||'').replace(/\D/g,'');
    if(/^(data|histórico|historico|valor|favorecido|cpf\/cnpj)$/i.test(String(name).trim()))return;
-   out.push({id:'I'+n,name,payee:name,value,date,history,account,taxId,document:taxId,bankName:name,rawText:c.join(' | '),originalColumns:c,original:line});
+   out.push({id:'I'+n,name,payee:name,value,date,history,account,taxId,document:taxId,bankName:name,rawText:c.join(' | '),originalColumns:c,original:line,signedValue});
  });
  if(!out.length)throw Error('Não consegui identificar os pagamentos do Itaú. Cole as linhas completas da planilha.');
  return out
@@ -29,18 +38,28 @@ function parseI(text){
 function mapD(rows){
  let h=(rows[0]||[]).map(x=>String(x??'').trim()),norm=x=>x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
  const find=(names)=>h.findIndex(x=>names.some(n=>norm(x)===norm(n)||norm(x).includes(norm(n))));
- let a=find(['TituloPessoaNome','Pessoa Nome','Fornecedor','Nome']),b=find(['TituloValor','Valor']),c=find(['TitDataMov','Data Movimento','Data']),d=find(['TituloNumeroParcela','Nº - Parcela','Numero Parcela','Título']);
+ let a=find(['TituloPessoaNome','Pessoa Nome','Fornecedor','Nome']),b=find(['TituloValor','Valor']),c=find(['TitDataMov','Data Movimento','Data']),cash=find(['TitMovDataCaixa','Data Caixa','Dt Caixa']),d=find(['TituloNumeroParcela','Nº - Parcela','Numero Parcela','Título']),cd=find(['TituloCDDescr','CD Descr','Tipo Movimento']),hist=find(['TituloHistorico','Histórico','Historico']),mult=find(['TituloMultiplicador','Multiplicador']);
  if(a<0||b<0) throw Error('Não encontrei as colunas de nome e valor no Excel do Dealer.');
- return rows.slice(1).map((r,i)=>({id:'D'+i,name:String(r[a]??'').trim(),value:dm(r[b]),date:c>=0?dt(r[c]):'',title:d>=0?String(r[d]??''):'',parcel:d>=0?String(r[d]??''):'',note:d>=0?String(r[d]??'').split('-')[0].replace(/\D/g,''):''})).filter(x=>x.name&&Number.isFinite(x.value)&&x.value>0)
+ return rows.slice(1).map((r,i)=>{
+   const name=String(r[a]??'').trim(),value=dm(r[b]),movementDate=c>=0?dt(r[c]):'',cashDate=cash>=0?dt(r[cash]):'';
+   const cdText=cd>=0?String(r[cd]??''):'',histText=hist>=0?String(r[hist]??''):'';
+   const classText=(cdText+' '+histText).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+   const multiplier=mult>=0?dms(r[mult]):NaN;
+   // Se o arquivo traz classificação, este MVP usa somente PAGAMENTO DE TÍTULOS.
+   if((cdText||histText) && /recebimento de titulo/.test(classText))return null;
+   if(cdText && !/pagamento de titulos/.test(classText))return null;
+   if(Number.isFinite(multiplier) && multiplier>0)return null;
+   return {id:'D'+i,name,value,date:movementDate||cashDate,movementDate,cashDate,title:d>=0?String(r[d]??''):'',parcel:d>=0?String(r[d]??''):'',note:d>=0?String(r[d]??'').split('-')[0].replace(/\D/g,''):'',history:histText,cdDescr:cdText};
+ }).filter(x=>x&&x.name&&Number.isFinite(x.value)&&x.value>0)
 }
 function names(xs){return xs.map(x=>x.name||x.payee).filter(Boolean).join(' + ')}
 function detail(x){return x.dealer.map(d=>`${d.name} (${brl(d.value)})`).join(' + ')}
 function render(){let r=S.r;if(!r)return;$('results').classList.remove('hidden');
  $('ki').textContent=r.totals.itauCount;$('kiv').textContent=brl(r.totals.itauValue);$('kde').textContent=r.totals.dealerCount;$('kdev').textContent=brl(r.totals.dealerValue);
- $('ko').textContent=r.matches.length;$('kd').textContent=r.differences.length+r.itauSem.length+r.dealerSem.length;
- $('km').textContent=`${r.itauSem.length} Itaú sem Dealer · ${r.dealerSem.length} Dealer sem Itaú`;
+ $('ko').textContent=r.matches.length;$('kd').textContent=r.differences.length+r.review.length+r.itauSem.length+r.dealerSem.length;
+ $('km').textContent=`${r.review.length} analisar · ${r.itauSem.length} Itaú sem Dealer · ${r.dealerSem.length} Dealer sem Itaú`;
  let q=$('search').value.toUpperCase();
- let rows=r.all.filter(x=>S.v==='all'||S.v==='matched'&&x.status==='CONCILIADO'||S.v==='exceptions'&&x.status!=='CONCILIADO'||S.v==='itauOnly'&&x.status==='ITAU_SEM_DEALER'||S.v==='dealerOnly'&&x.status==='DEALER_SEM_ITAU')
+ let rows=r.all.filter(x=>S.v==='all'||S.v==='matched'&&x.status==='CONCILIADO'||S.v==='exceptions'&&x.status!=='CONCILIADO'||S.v==='review'&&x.status==='ANALISAR'||S.v==='itauOnly'&&x.status==='ITAU_SEM_DEALER'||S.v==='dealerOnly'&&x.status==='DEALER_SEM_ITAU')
  .filter(x=>!q||[...x.itau,...x.dealer].some(y=>((y.name||y.payee||'')+' '+(y.title||y.note||'')).toUpperCase().includes(q)));
  $('body').innerHTML=rows.map(x=>{
    const i=x.itau.length?x.itau[0]:null,iv=x.itau.reduce((s,a)=>s+a.value,0),dv=x.dealer.reduce((s,d)=>s+d.value,0),diff=iv-dv;
@@ -53,7 +72,7 @@ function render(){let r=S.r;if(!r)return;$('results').classList.remove('hidden')
     <td>${dealerLabel}</td>
     <td>${brl(iv)}</td><td>${brl(dv)}</td>
     <td class="${Math.abs(diff)>.01?'bad':'ok'}">${brl(diff)}</td>
-    <td class="${x.status==='CONCILIADO'?'ok':x.status==='DIVERGENCIA'?'warn':'bad'}">${x.status}</td>
+    <td class="${statusClass(x.status)}">${statusLabel(x.status)}</td>
     <td><small>${method}</small></td>
    </tr>`}).join('');
  $('rowCount').textContent=`${rows.length} registros`;
@@ -75,7 +94,7 @@ $('analyze').onclick=async()=>{
   set('Validando dados','Conferindo pagamentos do Itaú e movimentos do Dealer...');await new Promise(r=>setTimeout(r,40));
   set('Processando conciliação',`${S.i.length} pagamentos × ${S.d.length} movimentos. Testando 1×1, 1×N, N×1 e N×N...`);await new Promise(r=>setTimeout(r,40));
   S.r=IntelligentReconciler.reconcile(S.i,S.d,{tolerance:.011,maxGroup:20,maxSubset:12});
-  set('Processamento concluído',`${S.r.matches.length} conciliações encontradas. Nenhuma relação foi forçada.`,'done');$('message').textContent='Conciliação concluída.';render();
+  set('Processamento concluído',`${S.r.matches.length} conciliações · ${S.r.review.length} para analisar. Relações candidatas só foram aceitas com soma exata.`,'done');$('message').textContent='Conciliação concluída.';render();
  }catch(e){set('Não foi possível concluir',e.message,'error');$('message').textContent=e.message}finally{updateAnalyzeState()}
 };
 $('search').oninput=render;document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.v=b.dataset.v;render()});

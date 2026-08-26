@@ -4,3 +4,4 @@
 .spinner{width:18px;height:18px;border:2px solid #d7dde6;border-top-color:#2356d8;border-radius:50%;animation:spin .8s linear infinite;flex:0 0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}.process-box.done .spinner{display:none}.process-box.done{border-color:#cfe4d7;background:#f4fbf6}.process-box.error{border-color:#efd0d0;background:#fff7f7}
 .hint{font-size:11px;line-height:1.4;color:#667085;background:#f8fafc;border-radius:9px;padding:8px;margin:7px 0 10px}
+.warn{color:#9a6700;font-weight:800}.review{color:#6b46c1;font-weight:800}

@@ -1,4 +1,4 @@
-/* MVP V20 - adaptador do motor flexível de pagamentos.
+/* MVP V22 - adaptador do motor flexível de pagamentos.
    1x1, 1xN, Nx1 e NxN são possibilidades avaliadas a cada execução.
    Nenhum fornecedor recebe regra fixa de agrupamento. */
 (() => {
@@ -12,6 +12,7 @@
     else if (status === 'difference') status = 'DIVERGENCIA';
     else if (status === 'missing') status = 'ITAU_SEM_DEALER';
     else if (status === 'dealerOnly') status = 'DEALER_SEM_ITAU';
+    else if (status === 'review') status = 'ANALISAR';
 
     return {
       itau: bank,
@@ -38,15 +39,17 @@
     const adaptedResults = raw.results.map(adaptResult);
     const matches = adaptedResults.filter(x => x.status === 'CONCILIADO');
     const differences = adaptedResults.filter(x => x.status === 'DIVERGENCIA');
+    const review = adaptedResults.filter(x => x.status === 'ANALISAR');
     const itauSem = adaptedResults.filter(x => x.status === 'ITAU_SEM_DEALER');
     const dealerSem = (raw.dealerOnly || []).map(adaptResult);
 
     return {
       matches,
       differences,
+      review,
       itauSem,
       dealerSem,
-      all: [...matches, ...differences, ...itauSem, ...dealerSem],
+      all: [...matches, ...differences, ...review, ...itauSem, ...dealerSem],
       totals: raw.totals
     };
   }

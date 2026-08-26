@@ -431,10 +431,12 @@
       const row=matrix[r]||[];
       const name=String(row[h.name]??'').trim();
       const date=formatDateBR(row[h.date]);
-      const value=Math.abs(parseMoneyBR(row[h.value]));
-      if(!name || !date || !Number.isFinite(value) || value===0) continue;
+      const rawValue=parseMoneyBR(row[h.value]);
+      // Modo pagamentos: não transformar créditos/recebimentos em pagamentos por usar Math.abs.
+      if(!name || !date || !Number.isFinite(rawValue) || rawValue>=0) continue;
+      const value=Math.abs(rawValue);
       const id='IP'+(++seq);
-      out.push({id,sourceRow:r+1,payee:name,date,value:round2(value),note:'',yourNumber:'',installment:''});
+      out.push({id,sourceRow:r+1,payee:name,date,value:round2(value),signedValue:rawValue,note:'',yourNumber:'',installment:''});
     }
     if(!out.length) throw new Error('O arquivo de pagamentos do Itaú foi aberto, mas nenhum pagamento válido foi encontrado.');
     return out;
@@ -495,6 +497,18 @@
     if(!A.size||!B.size) return 0;
     let hit=0; for(const x of A) if(B.has(x)) hit++;
     return hit/Math.max(A.size,B.size);
+  }
+
+  // Relações conhecidas são CANDIDATAS, nunca regras de conciliação automática.
+  // Elas apenas autorizam o motor a testar a combinação. A confirmação continua
+  // dependendo de fechamento matemático exato entre Itaú e Dealer.
+  const KNOWN_PARTY_RELATIONS=[
+    {a:'volkswagen',b:'lm transport',label:'Volkswagen ↔ LM'}
+  ];
+
+  function knownPartyRelation(a,b){
+    const A=normalizePartyKey(a), B=normalizePartyKey(b);
+    return KNOWN_PARTY_RELATIONS.find(r=>(A===r.a&&B===r.b)||(A===r.b&&B===r.a))||null;
   }
 
   function paymentCombinations(items,target,maxSize=20,tolerance=MONEY_TOLERANCE){
@@ -701,9 +715,7 @@
       const exact=D.filter(d=>!usedD.has(d.id)&&Math.abs(d.value-i.value)<=tolerance)
         .map(d=>({d,sim:partySimilarity(bankName(i),dealerName(d)),id:sameIdentifier(i,d)?1:0,ds:dateScore(i,d)}));
       const strong=exact.filter(x=>x.id || x.sim>=0.25).sort((a,b)=>b.id-a.id || a.ds.score-b.ds.score || b.sim-a.sim);
-      if(strong.length){ consume([i],[strong[0].d],'ok','Conciliado','1×1'); continue; }
-      const byDate=exact.filter(x=>x.ds.score<=2).sort((a,b)=>a.ds.score-b.ds.score);
-      if(byDate.length===1) consume([i],[byDate[0].d],'ok','Conciliado','1×1 · valor/data');
+      if(strong.length){ consume([i],[strong[0].d],'ok','Conciliado','1×1 · mesma entidade/valor'); continue; }
     }
 
     // 2) Relação 1×N. Primeiro tenta grupos por entidade; sem relação nominal, só aceita grupo homogêneo + data compatível + soma exata.
@@ -720,8 +732,8 @@
         if(subset && subset.length>1 && homogeneous(subset,'D') && dateCompatible([i],subset,3)) hits.push({items:subset,sim:x.sim});
       }
       const named=hits.filter(x=>x.sim>=0.25).sort((a,b)=>b.sim-a.sim || a.items.length-b.items.length);
-      const hit=named.length?named[0].items:(hits.length===1?hits[0].items:null);
-      if(hit) consume([i],hit,'grouped',`Conciliado por agrupamento 1×${hit.length}`,`1×${hit.length}`);
+      const hit=named.length?named[0].items:null;
+      if(hit) consume([i],hit,'grouped',`Conciliado por agrupamento 1×${hit.length}`,`1×${hit.length} · mesma entidade`);
     }
 
     // 3) Relação N×1, simétrica ao passo anterior.
@@ -738,8 +750,8 @@
         if(subset && subset.length>1 && homogeneous(subset,'I') && dateCompatible(subset,[d],3)) hits.push({items:subset,sim:x.sim});
       }
       const named=hits.filter(x=>x.sim>=0.25).sort((a,b)=>b.sim-a.sim || a.items.length-b.items.length);
-      const hit=named.length?named[0].items:(hits.length===1?hits[0].items:null);
-      if(hit) consume(hit,[d],'grouped',`Conciliado por agrupamento ${hit.length}×1`,`${hit.length}×1`);
+      const hit=named.length?named[0].items:null;
+      if(hit) consume(hit,[d],'grouped',`Conciliado por agrupamento ${hit.length}×1`,`${hit.length}×1 · mesma entidade`);
     }
 
     // 4) Relação N×N. Não há regra fixa de fornecedor: os grupos são reconstruídos a cada execução.
@@ -754,30 +766,119 @@
         .sort((a,b)=>b.sim-a.sim || a.dg.items.length-b.dg.items.length);
       if(candidates.length){
         const named=candidates.filter(x=>x.sim>=0.25);
-        const chosen=named.length?named[0]:(candidates.length===1?candidates[0]:null);
+        const chosen=named.length?named[0]:null;
         if(chosen){
           const dg=chosen.dg;
-          consume(ig.items,dg.items,'grouped',`Conciliado por agrupamento ${ig.items.length}×${dg.items.length}`,`${ig.items.length}×${dg.items.length}`);
+          consume(ig.items,dg.items,'grouped',`Conciliado por agrupamento ${ig.items.length}×${dg.items.length}`,`${ig.items.length}×${dg.items.length} · mesma entidade`);
         }
       }
     }
 
-    // 5) Divergência: só quando existe evidência de que é a mesma contraparte/documento.
-    // Valor diferente nunca é convertido em conciliado.
+    // 5) Relações candidatas previamente conhecidas.
+    // Ex.: LM pode representar pagamentos Volkswagen. A relação NÃO basta para conciliar:
+    // o conjunto só é consumido quando a soma fecha exatamente.
     for(const i of I){
       if(usedI.has(i.id)) continue;
-      const cand=D.filter(d=>!usedD.has(d.id))
-        .map(d=>({d,sim:partySimilarity(bankName(i),dealerName(d)),id:sameIdentifier(i,d)?1:0,ds:dateScore(i,d),diff:Math.abs(i.value-d.value)}))
-        .filter(x=>(x.id || x.sim>=0.5) && x.ds.score<=12)
-        .sort((a,b)=>b.id-a.id || a.diff-b.diff || a.ds.score-b.ds.score || b.sim-a.sim)[0];
-      if(cand){
-        usedI.add(i.id);usedD.add(cand.d.id);
-        results.push(makeResult([i],[cand.d],'difference','Divergência','Nome/documento relacionado · valor diferente'));
+      const exact=D.filter(d=>!usedD.has(d.id) && Math.abs(d.value-i.value)<=tolerance)
+        .map(d=>({d,rel:knownPartyRelation(bankName(i),dealerName(d)),ds:dateScore(i,d)}))
+        .filter(x=>x.rel)
+        .sort((a,b)=>a.ds.score-b.ds.score);
+      if(exact.length){
+        const x=exact[0];
+        consume([i],[x.d],'ok','Conciliado por relação candidata',`1×1 · relação candidata ${x.rel.label}`);
       }
     }
 
-    const itauOnly=I.filter(i=>!usedI.has(i.id)).map(i=>makeResult([i],[],'missing','Não localizado no Dealer','Sem correspondência'));
-    const dealerOnly=D.filter(d=>!usedD.has(d.id)).map(d=>makeResult([],[d],'dealerOnly','Baixado no Dealer, não localizado no Itaú','Sem correspondência'));
+    for(const i of I){
+      if(usedI.has(i.id)) continue;
+      const pool=D.filter(d=>!usedD.has(d.id));
+      const groups=bucketByParty(pool,'D');
+      const hits=[];
+      for(const g of groups){
+        const rel=knownPartyRelation(bankName(i),g.name);
+        if(!rel || !g.items.length || g.items.length>maxGroup) continue;
+        const subset=subsetExact(g.items,i.value,i,'D');
+        if(subset && subset.length>1 && homogeneous(subset,'D')) hits.push({items:subset,rel});
+      }
+      if(hits.length){
+        hits.sort((a,b)=>a.items.length-b.items.length);
+        const hit=hits[0];
+        consume([i],hit.items,'grouped',`Conciliado por agrupamento 1×${hit.items.length}`,`1×${hit.items.length} · relação candidata ${hit.rel.label}`);
+      }
+    }
+
+    for(const d of D){
+      if(usedD.has(d.id)) continue;
+      const pool=I.filter(i=>!usedI.has(i.id));
+      const groups=bucketByParty(pool,'I');
+      const hits=[];
+      for(const g of groups){
+        const rel=knownPartyRelation(g.name,dealerName(d));
+        if(!rel || !g.items.length || g.items.length>maxGroup) continue;
+        const subset=subsetExact(g.items,d.value,d,'I');
+        if(subset && subset.length>1 && homogeneous(subset,'I')) hits.push({items:subset,rel});
+      }
+      if(hits.length){
+        hits.sort((a,b)=>a.items.length-b.items.length);
+        const hit=hits[0];
+        consume(hit.items,[d],'grouped',`Conciliado por agrupamento ${hit.items.length}×1`,`${hit.items.length}×1 · relação candidata ${hit.rel.label}`);
+      }
+    }
+
+    iGroups=bucketByParty(I.filter(i=>!usedI.has(i.id)),'I').filter(g=>g.items.length>1&&g.items.length<=maxGroup);
+    dGroups=bucketByParty(D.filter(d=>!usedD.has(d.id)),'D').filter(g=>g.items.length>1&&g.items.length<=maxGroup);
+    for(const ig of iGroups){
+      if(ig.items.some(i=>usedI.has(i.id))) continue;
+      const iv=sum(ig.items);
+      const candidates=dGroups.filter(dg=>!dg.items.some(d=>usedD.has(d.id)) && Math.abs(sum(dg.items)-iv)<tolerance)
+        .map(dg=>({dg,rel:knownPartyRelation(ig.name,dg.name)})).filter(x=>x.rel);
+      if(candidates.length){
+        const chosen=candidates.sort((a,b)=>a.dg.items.length-b.dg.items.length)[0];
+        consume(ig.items,chosen.dg.items,'grouped',`Conciliado por agrupamento ${ig.items.length}×${chosen.dg.items.length}`,`${ig.items.length}×${chosen.dg.items.length} · relação candidata ${chosen.rel.label}`);
+      }
+    }
+
+    // 6) Divergência: somente DEPOIS de consumir todos os fechamentos exatos.
+    // A data ajuda a ordenar, mas nunca elimina uma contraparte claramente igual.
+    // Geramos todos os pares plausíveis e consumimos primeiro os mais fortes/mais próximos,
+    // evitando que a ordem das linhas escolha uma divergência pior.
+    const divergencePairs=[];
+    for(const i of I){
+      if(usedI.has(i.id)) continue;
+      for(const d of D){
+        if(usedD.has(d.id)) continue;
+        const sim=partySimilarity(bankName(i),dealerName(d));
+        const id=sameIdentifier(i,d)?1:0;
+        const sameKey=normalizePartyKey(bankName(i))===normalizePartyKey(dealerName(d))?1:0;
+        if(!(id || sameKey || sim>=0.5)) continue;
+        const ds=dateScore(i,d);
+        divergencePairs.push({i,d,id,sameKey,sim,ds,diff:Math.abs(round2(i.value-d.value))});
+      }
+    }
+    divergencePairs.sort((a,b)=>b.id-a.id || b.sameKey-a.sameKey || a.diff-b.diff || a.ds.score-b.ds.score || b.sim-a.sim || a.i._order-b.i._order || a.d._order-b.d._order);
+    for(const p of divergencePairs){
+      if(usedI.has(p.i.id)||usedD.has(p.d.id)) continue;
+      consume([p.i],[p.d],'difference','Divergência','Mesma entidade/documento · valor diferente');
+    }
+
+    // 7) Último recurso: mesmo valor, nomes diferentes. Não é conciliação automática.
+    // Só formamos automaticamente um par quando o valor restante identifica um candidato único
+    // em cada lado. Duplicidades ambíguas não são pareadas ao acaso.
+    const reviewI=new Map(), reviewD=new Map();
+    for(const i of I.filter(x=>!usedI.has(x.id))){const k=toC(i.value);if(!reviewI.has(k))reviewI.set(k,[]);reviewI.get(k).push(i);}
+    for(const d of D.filter(x=>!usedD.has(x.id))){const k=toC(d.value);if(!reviewD.has(k))reviewD.set(k,[]);reviewD.get(k).push(d);}
+    for(const [k,ib] of reviewI){
+      const db=reviewD.get(k)||[];
+      if(ib.length===1 && db.length===1){
+        consume(ib,db,'review','Analisar: mesmo valor com nomes diferentes','Mesmo valor · nomes diferentes · candidato único');
+      } else if(ib.length===db.length && ib.length>1){
+        // Há equivalência matemática do conjunto, mas não evidência suficiente para dizer qual linha é qual.
+        consume(ib,db,'review',`Analisar: ${ib.length} lançamentos de mesmo valor com nomes diferentes`,`${ib.length}×${db.length} · mesmo valor repetido · associação individual ambígua`);
+      }
+    }
+
+    const itauOnly=I.filter(i=>!usedI.has(i.id)).map(i=>makeResult([i],[],'missing','Não localizado no Dealer','Sem correspondência após todos os métodos'));
+    const dealerOnly=D.filter(d=>!usedD.has(d.id)).map(d=>makeResult([],[d],'dealerOnly','Baixado no Dealer, não localizado no Itaú','Sem correspondência após todos os métodos'));
     results.push(...itauOnly);
     results.sort((a,b)=>(a._order??0)-(b._order??0));
     return {results,dealerOnly,itauOnly,totals:{itauCount:I.length,dealerCount:D.length,itauValue:round2(I.reduce((s,x)=>s+x.value,0)),dealerValue:round2(D.reduce((s,x)=>s+x.value,0))}};
