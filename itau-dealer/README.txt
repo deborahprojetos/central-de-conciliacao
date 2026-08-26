@@ -19,3 +19,12 @@ Registros esperados no teste:
 - CRT AUTO LIMA SERVIC | 13/08/2026 | 285,00 | Seu número 0047529001
 
 Deploy: enviar o conteúdo deste ZIP ao Netlify.
+
+
+ATUALIZAÇÃO v11 - MODO PAGAMENTOS
+- Aceita Excel de pagamentos do Itaú (Data, Razão Social, Valor).
+- Aceita Excel do Dealer com títulos, Dt. Movimento e Dt. Caixa.
+- Reconhece 1 pagamento Itaú contra vários títulos Dealer por soma exata.
+- Mantém correspondências por nome/entidade e data como evidência.
+- Não força vínculo sem evidência mínima.
+- O modo pagamentos não depende de OCR.

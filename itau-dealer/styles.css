@@ -135,6 +135,7 @@ tbody tr:hover { background: #fafbfe; }
 .title-cell strong { display: block; color: var(--navy); }
 .title-cell small { color: var(--muted); }
 .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.adjustment-cell { color: #725400; font-weight: 750; }
 .money.positive { color: var(--red); font-weight: 800; }
 .money.negative { color: #8a4b08; font-weight: 800; }
 .badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 9px; font-size: 11px; font-weight: 800; white-space: nowrap; }

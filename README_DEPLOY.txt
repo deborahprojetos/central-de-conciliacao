@@ -55,3 +55,11 @@ ATUALIZAÇÃO v1.5
 - Cielo mantido.
 - DIFAL mantido.
 - Login obrigatório e sessão da Central mantidos.
+
+
+ATUALIZAÇÃO v11
+- Itaú × Dealer: integrado modo Pagamentos Itaú x Dealer Excel, com agrupamento de títulos e reconhecimento de data de movimento/caixa.
+
+
+ATUALIZAÇÃO v11
+Modo Pagamentos Itaú x Dealer Excel integrado ao módulo Itaú × Dealer, com agrupamento, datas de movimento/caixa e tratamento de títulos não localizados.

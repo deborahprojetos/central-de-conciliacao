@@ -7,14 +7,15 @@
     reconciliation: null,
     view: 'exceptions',
     search: '',
-    primaryFile: null
+    primaryFile: null,
+    paymentMode: false
   };
 
   const $ = (id) => document.getElementById(id);
   const els = {
     itauFile: $('itauFile'), companionFile: $('companionFile'), companionFolder: $('companionFolder'),
     dropZone: $('dropZone'), fileStatus: $('fileStatus'), companionBox: $('companionBox'),
-    dealerText: $('dealerText'), dealerStatus: $('dealerStatus'), analyzeBtn: $('analyzeBtn'),
+    dealerText: $('dealerText'), dealerFile: $('dealerFile'), dealerStatus: $('dealerStatus'), analyzeBtn: $('analyzeBtn'),
     clearBtn: $('clearBtn'), mainMessage: $('mainMessage'), results: $('results'), resultBody: $('resultBody'),
     emptyState: $('emptyState'), rowCount: $('rowCount'), searchInput: $('searchInput'), copyBtn: $('copyBtn'), exportBtn: $('exportBtn')
   };
@@ -585,6 +586,17 @@
       matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
     }
 
+    // Primeiro tenta o formato de pagamentos do Itaú (Data/Razão Social/Valor).
+    try {
+      state.itauRows = C.extractItauPaymentRows(matrix);
+      state.paymentMode = true;
+      els.companionBox.classList.add('hidden');
+      const total = state.itauRows.reduce((s, r) => s + r.value, 0);
+      setStatus(els.fileStatus, `${primary.name}: ${state.itauRows.length} pagamentos identificados (${brl(total)}).`, 'ok');
+      return state.itauRows;
+    } catch (_) {}
+
+    state.paymentMode = false;
     state.itauRows = C.extractItauRows(matrix);
     els.companionBox.classList.add('hidden');
     const total = state.itauRows.reduce((s, r) => s + r.value, 0);
@@ -612,23 +624,37 @@
     }
   }
 
-  function analyze() {
+  async function parseDealerFile(file) {
+    if (!file) return null;
+    if (!window.XLSX) throw new Error('A biblioteca de Excel não carregou.');
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
+    const rows = C.extractDealerExcelRows(matrix);
+    setStatus(els.dealerStatus, `${file.name}: ${rows.length} títulos do Dealer identificados.`, 'ok');
+    return rows;
+  }
+
+  async function analyze() {
     els.mainMessage.textContent = '';
     try {
       if (!state.itauRows.length) throw new Error('Carregue primeiro o arquivo do Itaú.');
-      const dealerText = els.dealerText.value.trim();
-      if (!dealerText) throw new Error('Cole os movimentos do Dealer.');
-      const entries = C.parseDealerText(dealerText);
-      setStatus(els.dealerStatus, `${entries.length} movimentos reconhecidos no Dealer.`, 'ok');
-      state.reconciliation = C.reconcile(state.itauRows, entries);
+      if (state.paymentMode && els.dealerFile && els.dealerFile.files && els.dealerFile.files[0]) {
+        const dealerRows = await parseDealerFile(els.dealerFile.files[0]);
+        state.reconciliation = C.reconcilePayments(state.itauRows, dealerRows);
+      } else {
+        const dealerText = els.dealerText.value.trim();
+        if (!dealerText) throw new Error('Selecione o Excel do Dealer ou cole os movimentos do Dealer.');
+        const entries = C.parseDealerText(dealerText);
+        setStatus(els.dealerStatus, `${entries.length} movimentos reconhecidos no Dealer.`, 'ok');
+        state.reconciliation = C.reconcile(state.itauRows, entries);
+      }
       state.view = 'exceptions';
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === state.view));
-      updateSummary();
-      render();
-      els.results.classList.remove('hidden');
+      updateSummary(); render(); els.results.classList.remove('hidden');
       els.results.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
-      els.mainMessage.textContent = err.message;
+      els.mainMessage.textContent = err && err.message ? err.message : 'Não foi possível analisar os arquivos.';
       els.mainMessage.style.color = '#c0392b';
     }
   }
@@ -636,7 +662,7 @@
   function updateSummary() {
     const rr = state.reconciliation.results;
     const total = rr.reduce((s,r) => s + r.value, 0);
-    const ok = rr.filter(r => r.status === 'ok' || r.status === 'adjustment').length;
+    const ok = rr.filter(r => r.status === 'ok' || r.status === 'adjustment' || r.status === 'grouped').length;
     const diffs = rr.filter(r => r.status === 'difference' || r.status === 'missing').length;
     const missing = rr.filter(r => r.status === 'missing').length;
     const adjustments = rr.filter(r => r.status === 'adjustment').length;
@@ -669,13 +695,14 @@
   function statusHtml(r) {
     let cls = 'badge-ok';
     if (r.status === 'difference' || r.status === 'missing' || r.status === 'dealerOnly') cls = 'badge-error';
-    else if (r.status === 'adjustment') cls = 'badge-warn';
+    else if (r.status === 'adjustment' || r.status === 'grouped') cls = 'badge-warn';
 
     const details = [];
-    if (r.receipt > 0) details.push(`Recebimento ${brl(r.receipt)}`);
+    if (Number.isFinite(r.value)) details.push(`Recebido no Itaú ${brl(r.value)}`);
+    if (r.receipt > C.MONEY_TOLERANCE) details.push(`Principal ${brl(r.receipt)}`);
     if (r.interest > C.MONEY_TOLERANCE) details.push(`Juros +${brl(r.interest)}`);
     if (r.discount > C.MONEY_TOLERANCE) details.push(`Desconto −${brl(r.discount)}`);
-    if ((r.interest > C.MONEY_TOLERANCE || r.discount > C.MONEY_TOLERANCE) && Number.isFinite(r.dealerAdjusted)) details.push(`Total ajustado ${brl(r.dealerAdjusted)}`);
+    if ((r.interest > C.MONEY_TOLERANCE || r.discount > C.MONEY_TOLERANCE) && Number.isFinite(r.dealerAdjusted)) details.push(`Total recebido após ajustes ${brl(r.dealerAdjusted)}`);
     if ((r.status === 'difference') && Number.isFinite(r.finalDifference)) details.push(`Saldo final ${brl(r.finalDifference)}`);
     if (r.launch) details.push(`Lançamento ${r.launch}`);
     if (r.dateRelation === 'cash_next_day' && r.date && r.dealerDate) details.push(`Data Itaú ${r.date} → Dealer ${r.dealerDate}`);
@@ -689,11 +716,16 @@
     els.resultBody.innerHTML = rows.map(r => {
       const diffCls = r.difference > C.MONEY_TOLERANCE ? 'positive' : (r.difference < -C.MONEY_TOLERANCE ? 'negative' : '');
       const parcel = r.installment ? `Parcela ${esc(r.installment)}` : (r.date ? esc(r.date) : '');
+      const adjustmentLabel = r.interest > C.MONEY_TOLERANCE
+        ? `Juros +${brl(r.interest)}`
+        : (r.discount > C.MONEY_TOLERANCE ? `Desconto −${brl(r.discount)}` : '—');
       return `<tr>
         <td class="payee">${esc(r.payee || '—')}</td>
         <td class="title-cell"><strong>${esc(r.note)}</strong><small>${parcel}</small></td>
-        <td class="money">${brl(r.value)}</td>
-        <td class="money">${brl(r.dealerValue)}</td>
+        <td class="money"><strong>${brl(r.value)}</strong></td>
+        <td class="money">${brl(r.dealerPrincipal)}</td>
+        <td class="money adjustment-cell">${esc(adjustmentLabel)}</td>
+        <td class="money">${brl(r.dealerAdjusted)}</td>
         <td class="money ${diffCls}">${brl(r.difference)}</td>
         <td>${statusHtml(r)}</td>
       </tr>`;
@@ -710,13 +742,16 @@
       'Parcela': r.installment,
       'Seu número Itaú': r.yourNumber,
       'Data Itaú': r.date,
-      'Valor Itaú': r.value,
-      'Recebimento Dealer': r.receipt,
+      'Valor total recebido no Itaú': r.value,
+      'Valor principal Dealer': r.dealerPrincipal,
       'Juros': r.interest,
       'Desconto': r.discount,
+      'Valor total recebido pelo título (Dealer)': r.dealerAdjusted,
+      'Ajuste líquido (juros - desconto)': r.adjustmentValue,
+      'Recebimento Dealer': r.receipt,
       'Valor Dealer (recebimento)': r.dealerValue,
       'Valor Dealer ajustado': r.dealerAdjusted,
-      'Diferença Itaú x recebimento': r.difference,
+      'Diferença Itaú x total recebido': r.difference,
       'Saldo final após ajustes': r.finalDifference,
       'Situação': r.reason,
       'Lançamento Dealer': r.launch || '',
@@ -728,7 +763,7 @@
     const dealerOnly = state.reconciliation.dealerOnly.map(r => ({
       'Título Dealer': r.note, 'Data Dealer (Dt. Caixa)': r.date, 'Data Dealer (Dt. Movimento)': r.dealerMovementDate || '', 'Recebimento Dealer': r.receipt,
       'Juros': r.interest, 'Desconto': r.discount, 'Valor Dealer (recebimento)': r.dealerValue, 'Valor Dealer ajustado': r.dealerAdjusted,
-      'Diferença Itaú x recebimento': r.difference, 'Saldo final após ajustes': r.finalDifference,
+      'Diferença Itaú x total recebido': r.difference, 'Saldo final após ajustes': r.finalDifference,
       'Situação': r.reason, 'Lançamento Dealer': r.launch || ''
     }));
 
@@ -746,8 +781,8 @@
 
   async function copyTable() {
     const rows = currentRows();
-    const header = ['Pagador','Título','Valor Itaú','Valor Dealer','Diferença','Situação'];
-    const body = rows.map(r => [r.payee || '', r.note, r.value ?? '', r.dealerValue ?? '', r.difference ?? '', r.reason].join('\t'));
+    const header = ['Pagador','Título','Total recebido Itaú','Principal Dealer','Juros','Total Dealer após ajustes','Diferença','Situação'];
+    const body = rows.map(r => [r.payee || '', r.note, r.value ?? '', r.dealerPrincipal ?? '', r.interest ?? '', r.dealerAdjusted ?? '', r.difference ?? '', r.reason].join('\t'));
     try {
       await navigator.clipboard.writeText([header.join('\t'), ...body].join('\n'));
       const old = els.copyBtn.textContent;
@@ -759,8 +794,8 @@
   }
 
   function clearAll() {
-    state.files = []; state.itauRows = []; state.reconciliation = null; state.view = 'exceptions'; state.search = ''; state.primaryFile = null;
-    els.itauFile.value = ''; els.companionFile.value = ''; els.companionFolder.value = '';
+    state.files = []; state.itauRows = []; state.reconciliation = null; state.view = 'exceptions'; state.search = ''; state.primaryFile = null; state.paymentMode = false;
+    els.itauFile.value = ''; els.companionFile.value = ''; els.companionFolder.value = ''; if (els.dealerFile) els.dealerFile.value = ''; if (els.dealerFile) els.dealerFile.value = '';
     els.dealerText.value = ''; els.searchInput.value = ''; els.mainMessage.textContent = '';
     els.results.classList.add('hidden'); els.companionBox.classList.add('hidden');
     setStatus(els.fileStatus, 'Nenhum arquivo carregado.');
@@ -770,6 +805,8 @@
   els.itauFile.addEventListener('change', e => handleFiles(e.target.files, true));
   els.companionFile.addEventListener('change', e => handleFiles(e.target.files));
   els.companionFolder.addEventListener('change', e => handleFiles(e.target.files));
+  if (els.dealerFile) els.dealerFile.addEventListener('change', e => { const f=e.target.files&&e.target.files[0]; if(f) setStatus(els.dealerStatus, `${f.name}: arquivo selecionado.`, 'muted'); });
+  if (els.dealerFile) els.dealerFile.addEventListener('change', e => { const f=e.target.files&&e.target.files[0]; if(f) setStatus(els.dealerStatus, `${f.name}: arquivo selecionado.`, 'muted'); });
   els.dealerText.addEventListener('input', () => {
     const text = els.dealerText.value.trim();
     if (!text) return setStatus(els.dealerStatus, 'Aguardando dados do Dealer.');
@@ -791,3 +828,38 @@
   ['dragleave','drop'].forEach(ev => els.dropZone.addEventListener(ev, e => { e.preventDefault(); els.dropZone.classList.remove('dragover'); }));
   els.dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files, true));
 })();
+  async function parseDealerFile(file) {
+    if (!file) return null;
+    if (!window.XLSX) throw new Error('A biblioteca de Excel não carregou.');
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
+    const rows = C.extractDealerExcelRows(matrix);
+    setStatus(els.dealerStatus, `${file.name}: ${rows.length} títulos do Dealer identificados.`, 'ok');
+    return rows;
+  }
+
+  async function analyze() {
+    els.mainMessage.textContent = '';
+    try {
+      await parseItauFiles();
+      if (state.paymentMode && els.dealerFile && els.dealerFile.files && els.dealerFile.files[0]) {
+        const dealerRows = await parseDealerFile(els.dealerFile.files[0]);
+        state.reconciliation = C.reconcilePayments(state.itauRows, dealerRows);
+      } else {
+        const dealerText = els.dealerText.value.trim();
+        if (!dealerText) throw new Error('Selecione o Excel do Dealer ou cole os movimentos do Dealer.');
+        const entries = C.parseDealerText(dealerText);
+        setStatus(els.dealerStatus, `${entries.length} movimentos reconhecidos no Dealer.`, 'ok');
+        state.reconciliation = C.reconcile(state.itauRows, entries);
+      }
+      state.view = 'exceptions';
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === state.view));
+      updateSummary(); render(); els.results.classList.remove('hidden');
+      els.results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      els.mainMessage.textContent = err && err.message ? err.message : 'Não foi possível analisar os arquivos.';
+      els.mainMessage.style.color = '#c0392b';
+    }
+  }
+
