@@ -492,8 +492,12 @@
   }
 
   function partySimilarity(a,b){
-    const A=new Set(normalizePartyKey(a).split(/\s+/).filter(x=>x.length>=3));
-    const B=new Set(normalizePartyKey(b).split(/\s+/).filter(x=>x.length>=3));
+    // Termos societários/genéricos não podem, sozinhos, transformar dois nomes distintos
+    // em uma entidade relacionada. Isso evita falso positivo como "EMPRESA A" × "EMPRESA B".
+    const stop=new Set(['empresa','ltda','limitada','eireli','sociedade','companhia','grupo','holding','participacoes','participacao','comercio','comercial','servico','servicos','industria','industrial','consultoria','sistema','sistemas','representacao','representacoes','treinamento','me','epp','sa']);
+    const toks=s=>normalizePartyKey(s).split(/\s+/).filter(x=>x.length>=3&&!stop.has(x));
+    const A=new Set(toks(a));
+    const B=new Set(toks(b));
     if(!A.size||!B.size) return 0;
     let hit=0; for(const x of A) if(B.has(x)) hit++;
     return hit/Math.max(A.size,B.size);
@@ -715,7 +719,15 @@
       const exact=D.filter(d=>!usedD.has(d.id)&&Math.abs(d.value-i.value)<=tolerance)
         .map(d=>({d,sim:partySimilarity(bankName(i),dealerName(d)),id:sameIdentifier(i,d)?1:0,ds:dateScore(i,d)}));
       const strong=exact.filter(x=>x.id || x.sim>=0.25).sort((a,b)=>b.id-a.id || a.ds.score-b.ds.score || b.sim-a.sim);
-      if(strong.length){ consume([i],[strong[0].d],'ok','Conciliado','1×1 · mesma entidade/valor'); continue; }
+      if(strong.length){
+        const best=strong[0];
+        const sameKey=normalizePartyKey(bankName(i))===normalizePartyKey(dealerName(best.d));
+        const st=(best.id||sameKey)?'ok':'value';
+        const rs=st==='ok'?'Conciliado':'Conciliado pelo valor com entidade relacionada';
+        const mt=st==='ok'?'1×1 · mesma entidade/valor':'1×1 · valor exato + nome relacionado';
+        consume([i],[best.d],st,rs,mt);
+        continue;
+      }
     }
 
     // 2) Relação 1×N. Primeiro tenta grupos por entidade; sem relação nominal, só aceita grupo homogêneo + data compatível + soma exata.
@@ -785,7 +797,7 @@
         .sort((a,b)=>a.ds.score-b.ds.score);
       if(exact.length){
         const x=exact[0];
-        consume([i],[x.d],'ok','Conciliado por relação candidata',`1×1 · relação candidata ${x.rel.label}`);
+        consume([i],[x.d],'value','Conciliado pelo valor com relação candidata',`1×1 · relação candidata ${x.rel.label}`);
       }
     }
 
@@ -838,11 +850,42 @@
       }
     }
 
-    // 6) Divergência: somente DEPOIS de consumir todos os fechamentos exatos.
-    // A data ajuda a ordenar, mas nunca elimina uma contraparte claramente igual.
-    // Geramos todos os pares plausíveis e consumimos primeiro os mais fortes/mais próximos,
-    // evitando que a ordem das linhas escolha uma divergência pior.
-    const divergencePairs=[];
+    // 6) ENCONTRADO PARCIAL: somente DEPOIS de consumir todos os fechamentos exatos.
+    // Se a mesma entidade ainda aparece dos dois lados, juntamos primeiro os resíduos compatíveis
+    // para mostrar o saldo parcial real, em vez de criar várias 'divergências' soltas.
+    // A data ajuda a escolher, mas ausência de data não elimina uma contraparte claramente igual.
+    let remIGroups=bucketByParty(I.filter(i=>!usedI.has(i.id)),'I');
+    let remDGroups=bucketByParty(D.filter(d=>!usedD.has(d.id)),'D');
+    const partialGroupPairs=[];
+    for(const ig of remIGroups){
+      for(const dg of remDGroups){
+        const sim=partySimilarity(ig.name,dg.name);
+        const sameKey=normalizePartyKey(ig.name)===normalizePartyKey(dg.name);
+        const rel=knownPartyRelation(ig.name,dg.name);
+        if(!(sameKey || sim>=0.5 || rel)) continue;
+        if(!dateCompatible(ig.items,dg.items,7) && !sameKey && !rel) continue;
+        const iv=sum(ig.items), dv=sum(dg.items);
+        const diff=Math.abs(round2(iv-dv));
+        if(diff<tolerance) continue; // fechamento exato deveria ter sido consumido antes
+        partialGroupPairs.push({ig,dg,sameKey:sameKey?1:0,rel:rel?1:0,sim,diff});
+      }
+    }
+    partialGroupPairs.sort((a,b)=>b.sameKey-a.sameKey || b.rel-a.rel || a.diff-b.diff || b.sim-a.sim);
+    for(const p of partialGroupPairs){
+      const bi=p.ig.items.filter(i=>!usedI.has(i.id));
+      const dd=p.dg.items.filter(d=>!usedD.has(d.id));
+      if(!bi.length||!dd.length) continue;
+      // Revalida a relação depois de eventuais consumos anteriores.
+      const sim=partySimilarity(bankName(bi[0]),dealerName(dd[0]));
+      const sameKey=normalizePartyKey(bankName(bi[0]))===normalizePartyKey(dealerName(dd[0]));
+      const rel=knownPartyRelation(bankName(bi[0]),dealerName(dd[0]));
+      if(!(sameKey || sim>=0.5 || rel)) continue;
+      if(Math.abs(sum(bi)-sum(dd))<tolerance) continue;
+      consume(bi,dd,'partial','Encontrado parcial: contraparte identificada, valores não fecham',`${bi.length}×${dd.length} · mesma entidade/relação · saldo parcial`);
+    }
+
+    // Fallback 1×1 para resíduos da mesma entidade que não formaram um grupo coerente.
+    const partialPairs=[];
     for(const i of I){
       if(usedI.has(i.id)) continue;
       for(const d of D){
@@ -850,15 +893,16 @@
         const sim=partySimilarity(bankName(i),dealerName(d));
         const id=sameIdentifier(i,d)?1:0;
         const sameKey=normalizePartyKey(bankName(i))===normalizePartyKey(dealerName(d))?1:0;
-        if(!(id || sameKey || sim>=0.5)) continue;
+        const rel=knownPartyRelation(bankName(i),dealerName(d));
+        if(!(id || sameKey || sim>=0.5 || rel)) continue;
         const ds=dateScore(i,d);
-        divergencePairs.push({i,d,id,sameKey,sim,ds,diff:Math.abs(round2(i.value-d.value))});
+        partialPairs.push({i,d,id,sameKey,rel:rel?1:0,sim,ds,diff:Math.abs(round2(i.value-d.value))});
       }
     }
-    divergencePairs.sort((a,b)=>b.id-a.id || b.sameKey-a.sameKey || a.diff-b.diff || a.ds.score-b.ds.score || b.sim-a.sim || a.i._order-b.i._order || a.d._order-b.d._order);
-    for(const p of divergencePairs){
+    partialPairs.sort((a,b)=>b.id-a.id || b.sameKey-a.sameKey || b.rel-a.rel || a.diff-b.diff || a.ds.score-b.ds.score || b.sim-a.sim || a.i._order-b.i._order || a.d._order-b.d._order);
+    for(const p of partialPairs){
       if(usedI.has(p.i.id)||usedD.has(p.d.id)) continue;
-      consume([p.i],[p.d],'difference','Divergência','Mesma entidade/documento · valor diferente');
+      consume([p.i],[p.d],'partial','Encontrado parcial: mesma entidade/relação, valor diferente','1×1 · contraparte identificada · valor diferente');
     }
 
     // 7) Último recurso: mesmo valor, nomes diferentes. Não é conciliação automática.

@@ -1,9 +1,17 @@
 (()=>{
 'use strict';
-const $=id=>document.getElementById(id),S={i:[],d:[],r:null,v:'all'};
+const $=id=>document.getElementById(id),S={i:[],d:[],r:null};
 const brl=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n||0);
-const statusLabel=s=>({CONCILIADO:'Conciliado',DIVERGENCIA:'Divergência',ANALISAR:'Analisar',ITAU_SEM_DEALER:'Itaú sem Dealer',DEALER_SEM_ITAU:'Dealer sem Itaú'}[s]||s);
-const statusClass=s=>s==='CONCILIADO'?'ok':s==='DIVERGENCIA'?'warn':s==='ANALISAR'?'review':'bad';
+const STATUS={
+ CONCILIADO:'CONCILIADO',
+ CONCILIADO_AGRUPADO:'CONCILIADO AGRUPADO',
+ CONCILIADO_VALOR:'CONCILIADO VALOR',
+ ANALISAR_CONCILIACAO:'ANALISAR CONCILIAÇÃO',
+ NAO_ENCONTRADO:'NÃO ENCONTRADO',
+ ENCONTRADO_PARCIAL:'ENCONTRADO PARCIAL'
+};
+const statusLabel=s=>STATUS[s]||s;
+const statusClass=s=>({CONCILIADO:'ok',CONCILIADO_AGRUPADO:'ok',CONCILIADO_VALOR:'value',ANALISAR_CONCILIACAO:'review',NAO_ENCONTRADO:'bad',ENCONTRADO_PARCIAL:'partial'}[s]||'');
 const analyzeBtn=$('analyze');
 
 function updateAnalyzeState(){
@@ -24,7 +32,6 @@ function parseI(text){
    const h=String(history).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
    const creditLike=/recebimento|recebimentos|entrada pix|dep din|deposito|boleto recebido|cielo/.test(h);
    const paymentLike=/pagamento|pagamentos|sispag tributos|pag tit|tributo|darf/.test(h);
-   // Este módulo é de PAGAMENTOS. Entradas/recebimentos nunca podem virar "Itaú sem Dealer".
    if(creditLike || (signedValue>0 && !paymentLike))return;
    const value=Math.abs(signedValue);
    const name=c[3]||c.find(x=>x&&!dt(x)&&!Number.isFinite(dms(x)))||line;
@@ -45,37 +52,57 @@ function mapD(rows){
    const cdText=cd>=0?String(r[cd]??''):'',histText=hist>=0?String(r[hist]??''):'';
    const classText=(cdText+' '+histText).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
    const multiplier=mult>=0?dms(r[mult]):NaN;
-   // Se o arquivo traz classificação, este MVP usa somente PAGAMENTO DE TÍTULOS.
    if((cdText||histText) && /recebimento de titulo/.test(classText))return null;
    if(cdText && !/pagamento de titulos/.test(classText))return null;
    if(Number.isFinite(multiplier) && multiplier>0)return null;
    return {id:'D'+i,name,value,date:movementDate||cashDate,movementDate,cashDate,title:d>=0?String(r[d]??''):'',parcel:d>=0?String(r[d]??''):'',note:d>=0?String(r[d]??'').split('-')[0].replace(/\D/g,''):'',history:histText,cdDescr:cdText};
  }).filter(x=>x&&x.name&&Number.isFinite(x.value)&&x.value>0)
 }
-function names(xs){return xs.map(x=>x.name||x.payee).filter(Boolean).join(' + ')}
-function detail(x){return x.dealer.map(d=>`${d.name} (${brl(d.value)})`).join(' + ')}
-function render(){let r=S.r;if(!r)return;$('results').classList.remove('hidden');
+function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}
+function partyName(x){return x?.name||x?.payee||'—'}
+function sideSummary(items,side){
+ if(!items.length)return '—';
+ const first=partyName(items[0]);
+ if(items.length===1)return esc(first);
+ const noun=side==='I'?'pagamentos':'lançamentos';
+ return `<strong>${esc(first)}</strong><small>${items.length} ${noun} agrupados</small>`;
+}
+function groupNote(x){
+ if(x.status!=='CONCILIADO_AGRUPADO')return '';
+ const ni=x.itau.length,nd=x.dealer.length;
+ if(ni===1&&nd>1)return `Agrupou ${nd} lançamentos do Dealer · 1×${nd}`;
+ if(ni>1&&nd===1)return `Agrupou ${ni} pagamentos do Itaú · ${ni}×1`;
+ return `Agrupou ${ni} Itaú × ${nd} Dealer`;
+}
+function statusCell(x){
+ const title=esc(x.reason||x.type||'');
+ const note=groupNote(x);
+ return `<strong title="${title}">${statusLabel(x.status)}</strong>${note?`<small>${esc(note)}</small>`:''}`;
+}
+function render(){
+ let r=S.r;if(!r)return;$('results').classList.remove('hidden');
  $('ki').textContent=r.totals.itauCount;$('kiv').textContent=brl(r.totals.itauValue);$('kde').textContent=r.totals.dealerCount;$('kdev').textContent=brl(r.totals.dealerValue);
- $('ko').textContent=r.matches.length;$('kd').textContent=r.differences.length+r.review.length+r.itauSem.length+r.dealerSem.length;
- $('km').textContent=`${r.review.length} analisar · ${r.itauSem.length} Itaú sem Dealer · ${r.dealerSem.length} Dealer sem Itaú`;
+ const closed=r.conciliado.length+r.agrupado.length+r.valor.length;
+ const pending=r.analisar.length+r.parcial.length+r.naoEncontrado.length;
+ $('ko').textContent=closed;$('kd').textContent=pending;
+ $('km').textContent=`${r.parcial.length} parciais · ${r.analisar.length} analisar · ${r.naoEncontrado.length} não encontrados`;
  let q=$('search').value.toUpperCase();
- let rows=r.all.filter(x=>S.v==='all'||S.v==='matched'&&x.status==='CONCILIADO'||S.v==='exceptions'&&x.status!=='CONCILIADO'||S.v==='review'&&x.status==='ANALISAR'||S.v==='itauOnly'&&x.status==='ITAU_SEM_DEALER'||S.v==='dealerOnly'&&x.status==='DEALER_SEM_ITAU')
- .filter(x=>!q||[...x.itau,...x.dealer].some(y=>((y.name||y.payee||'')+' '+(y.title||y.note||'')).toUpperCase().includes(q)));
+ let rows=r.all.filter(x=>!q||[...x.itau,...x.dealer].some(y=>((y.name||y.payee||'')+' '+(y.title||y.note||'')+' '+(y.document||y.taxId||'')).toUpperCase().includes(q)));
  $('body').innerHTML=rows.map(x=>{
-   const i=x.itau.length?x.itau[0]:null,iv=x.itau.reduce((s,a)=>s+a.value,0),dv=x.dealer.reduce((s,d)=>s+d.value,0),diff=iv-dv;
-   const dealerLabel=x.dealer.length?detail(x):'—';
-   const itauLabel=x.itau.length>1?`${names(x.itau)} (agrupado)`:i?.name||i?.payee||'—';
-   const method=x.groupShape&&x.status==='CONCILIADO'?`${x.groupShape} · ${x.type||''}`:(x.type||'');
+   const i=x.itau.length?x.itau[0]:null,d=x.dealer.length?x.dealer[0]:null;
+   const iv=x.itau.reduce((s,a)=>s+a.value,0),dv=x.dealer.reduce((s,a)=>s+a.value,0),diff=iv-dv;
+   const itauLabel=sideSummary(x.itau,'I');
+   const dealerLabel=sideSummary(x.dealer,'D');
+   const history=i?.history?`<small>${esc(i.history)}</small>`:'';
    return `<tr>
-    <td>${i?.date||x.dealer[0]?.date||''}</td>
-    <td><strong>${itauLabel}</strong><small>${i?.history||''}</small></td>
-    <td>${dealerLabel}</td>
+    <td>${esc(i?.date||d?.date||d?.movementDate||d?.cashDate||'')}</td>
+    <td>${x.itau.length===1?`<strong>${itauLabel}</strong>`:itauLabel}${history}</td>
+    <td>${x.dealer.length===1?`<strong>${dealerLabel}</strong>`:dealerLabel}</td>
     <td>${brl(iv)}</td><td>${brl(dv)}</td>
     <td class="${Math.abs(diff)>.01?'bad':'ok'}">${brl(diff)}</td>
-    <td class="${statusClass(x.status)}">${statusLabel(x.status)}</td>
-    <td><small>${method}</small></td>
+    <td class="${statusClass(x.status)} status-cell">${statusCell(x)}</td>
    </tr>`}).join('');
- $('rowCount').textContent=`${rows.length} registros`;
+ $('rowCount').textContent=`${rows.length} conciliações/ocorrências`;
 }
 function parseDealerTextInput(){
  let lines=$('dealerText').value.split(/\r?\n/).filter(Boolean),out=[];
@@ -92,11 +119,11 @@ $('analyze').onclick=async()=>{
  btn.disabled=true;box.classList.remove('hidden');$('message').textContent='';
  try{
   set('Validando dados','Conferindo pagamentos do Itaú e movimentos do Dealer...');await new Promise(r=>setTimeout(r,40));
-  set('Processando conciliação',`${S.i.length} pagamentos × ${S.d.length} movimentos. Testando 1×1, 1×N, N×1 e N×N...`);await new Promise(r=>setTimeout(r,40));
+  set('Processando conciliação',`${S.i.length} pagamentos × ${S.d.length} movimentos. Testando correspondências e agrupamentos...`);await new Promise(r=>setTimeout(r,40));
   S.r=IntelligentReconciler.reconcile(S.i,S.d,{tolerance:.011,maxGroup:20,maxSubset:12});
-  set('Processamento concluído',`${S.r.matches.length} conciliações · ${S.r.review.length} para analisar. Relações candidatas só foram aceitas com soma exata.`,'done');$('message').textContent='Conciliação concluída.';render();
+  set('Processamento concluído',`${S.r.conciliado.length+S.r.agrupado.length+S.r.valor.length} conciliados · ${S.r.parcial.length} encontrados parcialmente · ${S.r.analisar.length} para analisar.`,'done');$('message').textContent='Conciliação concluída.';render();
  }catch(e){set('Não foi possível concluir',e.message,'error');$('message').textContent=e.message}finally{updateAnalyzeState()}
 };
-$('search').oninput=render;document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.v=b.dataset.v;render()});
+$('search').oninput=render;
 updateAnalyzeState();
 })();

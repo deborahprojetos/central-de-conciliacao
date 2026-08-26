@@ -1,6 +1,4 @@
-/* MVP V22 - adaptador do motor flexível de pagamentos.
-   1x1, 1xN, Nx1 e NxN são possibilidades avaliadas a cada execução.
-   Nenhum fornecedor recebe regra fixa de agrupamento. */
+/* MVP V23 - adaptador de status para visualização única. */
 (() => {
   'use strict';
 
@@ -8,17 +6,19 @@
     const bank = Array.isArray(r.sourceBankRows) ? r.sourceBankRows : [];
     const dealer = Array.isArray(r.matchedTitles) ? r.matchedTitles : [];
     let status = r.status;
-    if (status === 'ok' || status === 'grouped') status = 'CONCILIADO';
-    else if (status === 'difference') status = 'DIVERGENCIA';
-    else if (status === 'missing') status = 'ITAU_SEM_DEALER';
-    else if (status === 'dealerOnly') status = 'DEALER_SEM_ITAU';
-    else if (status === 'review') status = 'ANALISAR';
+    if (status === 'ok') status = 'CONCILIADO';
+    else if (status === 'grouped') status = 'CONCILIADO_AGRUPADO';
+    else if (status === 'value') status = 'CONCILIADO_VALOR';
+    else if (status === 'partial' || status === 'difference') status = 'ENCONTRADO_PARCIAL';
+    else if (status === 'review') status = 'ANALISAR_CONCILIACAO';
+    else if (status === 'missing' || status === 'dealerOnly') status = 'NAO_ENCONTRADO';
 
     return {
       itau: bank,
       dealer,
       status,
       type: r.method || r.reason || '',
+      reason: r.reason || '',
       difference: Number(r.difference || 0),
       groupShape: r.groupShape || `${bank.length}×${dealer.length}`,
       raw: r
@@ -36,20 +36,19 @@
       maxSubset: options.maxSubset ?? 12
     });
 
-    const adaptedResults = raw.results.map(adaptResult);
-    const matches = adaptedResults.filter(x => x.status === 'CONCILIADO');
-    const differences = adaptedResults.filter(x => x.status === 'DIVERGENCIA');
-    const review = adaptedResults.filter(x => x.status === 'ANALISAR');
-    const itauSem = adaptedResults.filter(x => x.status === 'ITAU_SEM_DEALER');
-    const dealerSem = (raw.dealerOnly || []).map(adaptResult);
+    const bankResults = raw.results.map(adaptResult);
+    const dealerOnly = (raw.dealerOnly || []).map(adaptResult);
+    const all = [...bankResults, ...dealerOnly];
+    const byStatus = status => all.filter(x => x.status === status);
 
     return {
-      matches,
-      differences,
-      review,
-      itauSem,
-      dealerSem,
-      all: [...matches, ...differences, ...review, ...itauSem, ...dealerSem],
+      all,
+      conciliado: byStatus('CONCILIADO'),
+      agrupado: byStatus('CONCILIADO_AGRUPADO'),
+      valor: byStatus('CONCILIADO_VALOR'),
+      analisar: byStatus('ANALISAR_CONCILIACAO'),
+      parcial: byStatus('ENCONTRADO_PARCIAL'),
+      naoEncontrado: byStatus('NAO_ENCONTRADO'),
       totals: raw.totals
     };
   }
