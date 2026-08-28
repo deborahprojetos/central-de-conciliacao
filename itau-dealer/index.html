@@ -39,18 +39,17 @@
     <section class="input-grid">
       <article class="card input-card">
         <div class="step"><span>1</span><div><h3>Arquivo do Itaú</h3><p>Pagamentos Itaú em Excel, além das versões anteriores em HTML ou PDF.</p></div></div>
-        <label id="dropZone" class="drop-zone">
+        <label class="btn btn-secondary">
+          Selecionar Excel do Itaú
           <input id="itauFile" type="file" accept=".xlsx,.xls,.htm,.html,.pdf" multiple hidden />
-          <div class="drop-icon">↑</div>
-          <strong>Arraste ou selecione o arquivo</strong>
-          <span>.xlsx, .xls, .htm, .html ou .pdf</span>
         </label>
         <div id="fileStatus" class="status-line muted">Nenhum arquivo carregado.</div>
+
         <div class="paste-box">
-          <strong>Ou cole os dados do Itaú</strong>
+          <strong>Ou cole aqui os pagamentos do Itaú</strong>
           <p>Cole a grade copiada do Excel/relatório Itaú (incluindo a coluna <code>Seu número</code>).</p>
           <textarea id="itauText" spellcheck="false" placeholder="Cole aqui os pagamentos do Itaú..."></textarea>
-          <div id="itauPasteStatus" class="status-line muted">Aguardando dados colados.</div>
+          <div id="itauPasteStatus" class="status-line muted">Aguardando dados do Itaú.</div>
         </div>
 
 

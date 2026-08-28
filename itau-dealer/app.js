@@ -612,11 +612,37 @@
   function parseItauPastedText() {
     const text = els.itauText ? els.itauText.value.trim() : '';
     if (!text) return false;
-    const rows = text.split(/\r?\n/).map(line => line.split(/\t|;/).map(v => v.trim()));
-    state.files = [];
-    state.primaryFile = null;
-    state.paymentMode = false;
-    state.itauRows = C.extractItauRows(rows);
+
+    const rows = text.split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line && !/^\|?\s*-+/.test(line))
+      .map(line => {
+        if (line.includes('|')) return line.split('|').map(v => v.trim()).filter(Boolean);
+        return line.split(/\t|;/).map(v => v.trim());
+      });
+
+    const header = ['pagador','seu numero','valor'];
+    let matrix = rows;
+    // O Itaú colado normalmente não traz cabeçalho. Monta uma estrutura compatível.
+    const converted = rows.map(row => {
+      const cols = row;
+      if (cols.length >= 7 && /\d/.test(cols[6])) {
+        const seuNumero = String(cols[6]).replace(/[^0-9]/g,'');
+        const note = seuNumero.length > 3 ? seuNumero.slice(0,-3) : seuNumero;
+        return [cols[0], '', cols[3], note, seuNumero];
+      }
+      return cols;
+    });
+
+    try {
+      state.files = [];
+      state.primaryFile = null;
+      state.paymentMode = false;
+      state.itauRows = C.extractItauRows([['Pagador','Data','Valor','Nota','Seu número'], ...converted]);
+    } catch(e) {
+      state.itauRows = C.extractItauRows(converted);
+    }
+
     const total = state.itauRows.reduce((s, r) => s + r.value, 0);
     setStatus(els.itauPasteStatus, `${state.itauRows.length} pagamentos Itaú identificados (${brl(total)}).`, 'ok');
     setStatus(els.fileStatus, 'Dados Itaú carregados por colagem.', 'ok');
@@ -657,7 +683,7 @@
   async function analyze() {
     els.mainMessage.textContent = '';
     try {
-      if (!state.itauRows.length) throw new Error('Carregue primeiro o arquivo do Itaú.');
+      if (!state.itauRows.length && !parseItauPastedText()) throw new Error('Carregue o arquivo do Itaú ou cole os dados.');
       if (state.paymentMode && els.dealerFile && els.dealerFile.files && els.dealerFile.files[0]) {
         const dealerRows = await parseDealerFile(els.dealerFile.files[0]);
         state.reconciliation = C.reconcilePayments(state.itauRows, dealerRows);

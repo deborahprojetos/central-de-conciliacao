@@ -1,0 +1,6 @@
+V31 - Itaú x Dealer
+
+- Leitura de colagem Itaú em formato tabela Markdown/Excel.
+- Conversão Seu Número removendo parcela final.
+- Análise liberada sem arquivo quando houver dados colados.
+- Mantida conciliação existente com status e agrupamento Dealer.
