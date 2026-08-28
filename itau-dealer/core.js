@@ -311,8 +311,10 @@
     // Lançamento do Dealer. Alguns relatórios também permitem o fallback
     // pela Nota Fiscal normalizada (sem os 3 dígitos da parcela).
     const yourNumber = normalizeId(bankRow.yourNumber || '');
+    const yourBase = yourNumber ? yourNumber.replace(/(\d{3})$/, '') : '';
     const candidates = groups.filter(g => !g.used && (
       (yourNumber && (g.launch === yourNumber || normalizeId(g.launch) === yourNumber)) ||
+      (yourBase && (g.note === yourBase || normalizeId(g.note) === yourBase)) ||
       (bankRow.note && g.note === bankRow.note) ||
       (yourNumber && g.entries && g.entries.some(e => normalizeId(e.launch) === yourNumber))
     ));
