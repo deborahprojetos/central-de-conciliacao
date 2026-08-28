@@ -1,8 +1,0 @@
-CENTRAL V21 — MVP Itaú × Dealer
-
-- 4 aplicações permanecem disponíveis.
-- Itaú × Dealer original permanece separado do Itaú × Dealer · MVP.
-- somente /itau-mvp/ recebeu alterações funcionais.
-- MVP agora usa Volkswagen ↔ LM como relação candidata condicionada ao fechamento matemático.
-- correspondências naturais, como Ouro Verde nos dois lados, têm prioridade.
-- mesmo valor com nome diferente vira ANALISAR após esgotar os demais métodos.

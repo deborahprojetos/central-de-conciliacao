@@ -1,7 +1,0 @@
-V26 - feedback de carregamento e processamento
-- O indicador de processamento permanece oculto quando nenhuma análise está em execução.
-- Durante a análise ele aparece; ao concluir ou falhar, volta a ficar oculto.
-- Ao selecionar Excel do Dealer, o botão mostra "✓ Excel carregado".
-- O nome do arquivo, quantidade de movimentos reconhecidos e total carregado ficam visíveis.
-- Limpar restaura o estado inicial do seletor de arquivo.
-- Motor de conciliação e regras da V25 não foram alterados nesta revisão de interface.
