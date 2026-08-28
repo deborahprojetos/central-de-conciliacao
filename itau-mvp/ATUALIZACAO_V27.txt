@@ -1,7 +1,0 @@
-ATUALIZAÇÃO V27
-
-Correção de integridade na entrada de dados do Itaú.
-O campo de valor colado agora reconhece corretamente números brasileiros com 0, 1, 2 ou mais casas decimais, sem descartar linhas como 154,1 ou 943,8.
-
-Impacto validado:
-DEALERUP 83,75 passa a comparar somente com o saldo Dealer 78,60, produzindo diferença correta de 5,15, porque o pagamento Itaú 154,10 volta a ser reconhecido e conciliado com o respectivo 154,10 do Dealer.
