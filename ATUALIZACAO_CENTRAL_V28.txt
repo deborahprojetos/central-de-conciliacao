@@ -1,0 +1,5 @@
+Atualização V28
+- Estrutura V27 mantida.
+- Cielo atualizado para V03.
+- Login obrigatório adicionado.
+- Módulos DIFAL, Itaú Dealer e Itaú MVP preservados.
