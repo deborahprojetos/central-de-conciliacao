@@ -1,0 +1,6 @@
+CENTRAL V23
+- Itaú × Dealer MVP: uma única visualização + seis status.
+- Agrupamentos consolidados em uma única linha com quantidade de registros (ex.: 1×12).
+- Itaú × Dealer original: não alterado.
+- Cielo: não alterado.
+- DIFAL: não alterado.

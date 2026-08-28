@@ -1,0 +1,38 @@
+MVP ITAÚ × DEALER — V21
+
+Objetivo desta versão:
+- organizar as pendências e reduzir falsos ITAU_SEM_DEALER / DEALER_SEM_ITAU;
+- preservar conciliações naturais antes de usar relações conhecidas;
+- adicionar a situação ANALISAR para mesmo valor com nomes diferentes.
+
+Ordem de decisão:
+1. mesma entidade/documento + mesmo valor;
+2. duplicidades e agrupamentos 1×N, N×1 e N×N da mesma entidade;
+3. relações candidatas conhecidas, atualmente Volkswagen ↔ LM, somente se a soma fechar exatamente;
+4. divergência quando existe evidência de mesma entidade, mas o valor não fecha;
+5. mesmo valor com nomes diferentes => ANALISAR;
+6. somente depois: Itaú sem Dealer / Dealer sem Itaú.
+
+Regra Volkswagen / LM:
+- LM TRANSPORTES pode ser candidato de pagamentos Volkswagen;
+- não é regra fixa por fornecedor;
+- não substitui correspondências naturais do período;
+- só concilia se Soma Itaú = Soma Dealer.
+
+Casos validados:
+- BANCO VOLKSWAGEN R$ 1.034.212,00 x 12 títulos LM = CONCILIADO 1×12;
+- OURO VERDE R$ 238,38 + R$ 238,38 x Dealer com mesmos dois valores = CONCILIADO 2×2;
+- IPOG R$ 204,63 + R$ 204,63 x Dealer = CONCILIADO 2×2;
+- CEF MATRIZ R$ 22.503,63 sem valor correspondente = ITAÚ SEM DEALER;
+- mesmo valor e nomes diferentes = ANALISAR, não CONCILIADO;
+- NASA, SERPRO, PROTEÇÃO e DEALERUP com nome relacionado mas valor diferente = DIVERGÊNCIA.
+
+Interface:
+- novo filtro ANALISAR;
+- situações exibidas com nomes legíveis, sem underscores;
+- KPI de pendências separa Analisar / Itaú sem Dealer / Dealer sem Itaú;
+- botão Analisar continua desabilitado enquanto não houver dados válidos dos dois lados.
+
+Separação de módulos preservada:
+- /itau-mvp/ recebeu as alterações;
+- /itau-dealer/ permanece separado e não foi modificado nesta versão.
