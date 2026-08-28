@@ -312,8 +312,9 @@
     // pela Nota Fiscal normalizada (sem os 3 dígitos da parcela).
     const yourNumber = normalizeId(bankRow.yourNumber || '');
     const candidates = groups.filter(g => !g.used && (
-      (yourNumber && g.launch === yourNumber) ||
-      (bankRow.note && g.note === bankRow.note)
+      (yourNumber && (g.launch === yourNumber || normalizeId(g.launch) === yourNumber)) ||
+      (bankRow.note && g.note === bankRow.note) ||
+      (yourNumber && g.entries && g.entries.some(e => normalizeId(e.launch) === yourNumber))
     ));
     if (!candidates.length) return { group: null, dateFallback: false, dateRelation: 'missing' };
 
