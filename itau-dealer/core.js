@@ -307,17 +307,25 @@
   }
 
   function chooseDealerGroup(bankRow, groups) {
-    const sameNote = groups.filter(g => !g.used && g.note === bankRow.note);
-    if (!sameNote.length) return { group: null, dateFallback: false, dateRelation: 'missing' };
+    // Regra principal Itaú x Dealer: o Seu Número do Itaú corresponde ao
+    // Lançamento do Dealer. Alguns relatórios também permitem o fallback
+    // pela Nota Fiscal normalizada (sem os 3 dígitos da parcela).
+    const yourNumber = normalizeId(bankRow.yourNumber || '');
+    const candidates = groups.filter(g => !g.used && (
+      (yourNumber && g.launch === yourNumber) ||
+      (bankRow.note && g.note === bankRow.note)
+    ));
+    if (!candidates.length) return { group: null, dateFallback: false, dateRelation: 'missing' };
 
-    const ranked = sameNote.map(g => ({
+    const ranked = candidates.map(g => ({
       g,
       amountDiff: Math.abs(round2(bankRow.value - g.total)),
-      dateScore: dealerDateScore(bankRow, g)
+      dateScore: dealerDateScore(bankRow, g),
+      launchMatch: yourNumber && g.launch === yourNumber ? 0 : 1
     })).sort((a, b) => {
       const aExact = a.amountDiff < MONEY_TOLERANCE ? 0 : 1;
       const bExact = b.amountDiff < MONEY_TOLERANCE ? 0 : 1;
-      return aExact - bExact || a.amountDiff - b.amountDiff || a.dateScore - b.dateScore;
+      return a.launchMatch - b.launchMatch || aExact - bExact || a.amountDiff - b.amountDiff || a.dateScore - b.dateScore;
     });
 
     const best = ranked[0];
