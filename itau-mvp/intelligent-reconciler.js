@@ -8,7 +8,7 @@
     let status = r.status;
     if (status === 'ok') status = 'CONCILIADO';
     else if (status === 'grouped') status = 'CONCILIADO_AGRUPADO';
-    else if (status === 'value') status = 'CONCILIADO_VALOR';
+    else if (status === 'value') status = 'ANALISAR_CONCILIACAO';
     else if (status === 'partial' || status === 'difference') status = 'ENCONTRADO_PARCIAL';
     else if (status === 'review') status = 'ANALISAR_CONCILIACAO';
     else if (status === 'missing' || status === 'dealerOnly') status = 'NAO_ENCONTRADO';

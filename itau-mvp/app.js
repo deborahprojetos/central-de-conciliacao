@@ -22,26 +22,40 @@ function dms(v){if(typeof v==='number')return Number.isFinite(v)?v:NaN;let s=Str
 function dm(v){const n=dms(v);return Number.isFinite(n)?Math.abs(n):NaN}
 function dt(v){if(v instanceof Date&&!isNaN(v))return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();let s=String(v??'').trim(),m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);if(m)return `${m[3].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[1]}`;m=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);return m?`${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`:''}
 function parseI(text){
- const lines=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean),out=[];
+ const raw=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean);
+ const lines=[];
+ // Algumas colagens do Excel quebram a célula do valor para a linha seguinte.
+ for(const line of raw){
+   if(/^[-−]\s*(?:R\$\s*)?[\d.,]+$/.test(line) && lines.length && /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\s*$|\d{14}\s*$/.test(lines[lines.length-1])) lines[lines.length-1]+=' '+line;
+   else lines.push(line);
+ }
+ const out=[];
  lines.forEach((line,n)=>{
-   let c=line.includes('\t')?line.split('\t'):line.includes('|')?line.split('|'):line.includes(';')?line.split(';'):[line];
-   c=c.map(x=>String(x??'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim());
-   const dates=c.map(dt).filter(Boolean),signedNums=c.map(dms).filter(x=>Number.isFinite(x)&&x!==0);
-   if(!dates.length||!signedNums.length)return;
-   const signedValue=signedNums[signedNums.length-1],date=dates[0],history=c[1]||'',account=c[2]||'';
-   const h=String(history).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-   const creditLike=/recebimento|recebimentos|entrada pix|dep din|deposito|boleto recebido|cielo/.test(h);
-   const paymentLike=/pagamento|pagamentos|sispag tributos|pag tit|tributo|darf/.test(h);
-   if(creditLike || (signedValue>0 && !paymentLike))return;
-   const value=Math.abs(signedValue);
-   const name=c[3]||c.find(x=>x&&!dt(x)&&!Number.isFinite(dms(x)))||line;
-   const taxId=(c[4]||'').replace(/\D/g,'');
-   if(/^(data|histórico|historico|valor|favorecido|cpf\/cnpj)$/i.test(String(name).trim()))return;
-   out.push({id:'I'+n,name,payee:name,value,date,history,account,taxId,document:taxId,bankName:name,rawText:c.join(' | '),originalColumns:c,original:line,signedValue});
+   const c=(line.includes('\t')?line.split('\t'):line.includes('|')?line.split('|'):line.includes(';')?line.split(';'):[line]).map(x=>String(x??'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+   const whole=c.join(' ');
+   const tax=whole.match(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{14}\b|\b\d{11}\b/);
+   const taxId=tax?tax[0].replace(/\D/g,''):'';
+   const valueMatch=whole.replace(/−/g,'-').match(/(?:^|\s|[|;])(-(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{1,2})?)(?=\s|$|[|;])/g);
+   const lastNegative=valueMatch?.at(-1)?.trim();
+   const signedValue=lastNegative?dms(lastNegative):NaN;
+   // Mantém também o formato original com data, histórico e colunas completas.
+   const date=c.map(dt).find(Boolean)||'';
+   const history=c.length>1&&date?c[1]:'';
+   const h=history.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+   if(/recebimento|entrada pix|deposito|boleto recebido|cielo/.test(h))return;
+   if(!Number.isFinite(signedValue)||signedValue>=0)return;
+   let name='';
+   if(date && c.length>=4)name=c[3];
+   else if(tax)name=whole.slice(0,whole.indexOf(tax[0])).replace(/^\s*\|?\s*/,'').trim();
+   else name=whole.slice(0,whole.indexOf(lastNegative)).trim();
+   name=name.replace(/\s*[|;]\s*$/,'').trim();
+   if(!name||/^(data|historico|histórico|valor|favorecido|raz[aã]o social)$/i.test(name))return;
+   out.push({id:'I'+n,name,payee:name,value:Math.abs(signedValue),date,history,account:c[2]||'',taxId,document:taxId,bankName:name,rawText:c.join(' | '),originalColumns:c,original:line,signedValue});
  });
- if(!out.length)throw Error('Não consegui identificar os pagamentos do Itaú. Cole as linhas completas da planilha.');
- return out
+ if(!out.length)throw Error('Não consegui identificar pagamentos negativos. Cole as linhas com favorecido, CPF/CNPJ e valor.');
+ return out;
 }
+
 function mapD(rows){
  const h=(rows[0]||[]).map(x=>String(x??'').trim());
  const norm=x=>String(x??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
@@ -109,10 +123,35 @@ function statusCell(x){
  const note=groupNote(x);
  return `<strong title="${title}">${statusLabel(x.status)}</strong>${note?`<small>${esc(note)}</small>`:''}`;
 }
+function renderReadableAnalysis(r){
+ const all=r.all.filter(x=>x.itau.length);
+ const confirmed=all.filter(x=>['CONCILIADO','CONCILIADO_AGRUPADO'].includes(x.status));
+ const review=all.filter(x=>['ANALISAR_CONCILIACAO','CONCILIADO_VALOR','ENCONTRADO_PARCIAL'].includes(x.status));
+ const missing=all.filter(x=>x.status==='NAO_ENCONTRADO');
+ const dealerOnly=r.all.filter(x=>!x.itau.length&&x.dealer.length);
+ const refs=x=>x.dealer.map(d=>`${d.title||d.parcel||d.note||d.id} (${brl(d.value)})`).join(' + ');
+ const names=x=>[...new Set(x.dealer.map(d=>d.name||d.payee).filter(Boolean))].join(' + ');
+ const rows=(items,kind)=>items.length?items.map(x=>{
+   const value=x.itau.reduce((sum,i)=>sum+i.value,0);
+   const dealerValue=x.dealer.reduce((sum,d)=>sum+d.value,0);
+   let reason=kind==='confirmed'?(x.dealer.length>1?`Soma de ${x.dealer.length} títulos do Dealer fecha o pagamento.`:'Favorecido e valor compatíveis.'):
+     kind==='missing'?'Pagamento sem vínculo confiável com títulos do Dealer.':
+     (x.reason||'Verificar comprovante, favorecido e títulos.');
+   if(kind==='review'&&x.status==='CONCILIADO_VALOR')reason='Valor igual, mas o nome do favorecido não confirma o vínculo.';
+   if(kind==='review'&&x.status==='ENCONTRADO_PARCIAL')reason=`Possível vínculo com diferença de ${brl(value-dealerValue)}; conferir antes de conciliar.`;
+   return `<tr><td><strong>${esc(x.itau.map(i=>i.name||i.payee).join(' + '))}</strong>${x.itau[0]?.taxId?`<small>CPF/CNPJ Itaú: ${esc(x.itau[0].taxId)}</small>`:''}</td><td class="money">${brl(value)}</td><td>${x.dealer.length?`<strong>${esc(names(x))}</strong><small>Título(s): ${esc(refs(x))} · Total ${brl(dealerValue)}</small>`:'—'}</td><td>${esc(reason)}</td></tr>`;
+ }).join(''):'<tr><td colspan="4">Nenhum pagamento nesta situação.</td></tr>';
+ const section=(title,desc,items,kind)=>`<section class="analysis-panel ${kind}"><header><h2>${title} <span>${items.length}</span></h2><p>${desc}</p></header><div class="analysis-scroll"><table><thead><tr><th>Pagamento no Itaú</th><th>Valor</th><th>Registro no Dealer</th><th>Por quê</th></tr></thead><tbody>${rows(items,kind)}</tbody></table></div></section>`;
+ $('analysisSections').innerHTML=section('Consta no Itaú e no Dealer','Nome compatível e valor exato, individual ou somado.',confirmed,'confirmed')+
+  section('Valor encontrado: revisar o vínculo','Nome divergente, valor repetido, composição ambígua ou diferença de valor.',review,'review')+
+  section('Pagamento no Itaú sem correspondência no Dealer','Nenhum título foi atribuído com segurança.',missing,'missing')+
+  `<details class="dealer-remaining"><summary>Ver ${dealerOnly.length} título(s) somente no Dealer</summary><div class="analysis-scroll"><table><thead><tr><th>Credor</th><th>Título</th><th>Valor</th></tr></thead><tbody>${dealerOnly.map(x=>x.dealer.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.title||d.parcel||d.note||d.id)}</td><td class="money">${brl(d.value)}</td></tr>`).join('')).join('')||'<tr><td colspan="3">Nenhum.</td></tr>'}</tbody></table></div></details>`+
+  '<p class="analysis-caveat">O CNPJ vem do Itaú; sem CNPJ correspondente no Dealer, ele não confirma sozinho a identidade. “Revisar” é uma sugestão, não uma baixa confirmada.</p>';
+}
 function render(){
- let r=S.r;if(!r)return;$('results').classList.remove('hidden');
+ let r=S.r;if(!r)return;$('results').classList.remove('hidden');renderReadableAnalysis(r);
  $('ki').textContent=r.totals.itauCount;$('kiv').textContent=brl(r.totals.itauValue);$('kde').textContent=r.totals.dealerCount;$('kdev').textContent=brl(r.totals.dealerValue);
- const closed=r.conciliado.length+r.agrupado.length+r.valor.length;
+ const closed=r.conciliado.length+r.agrupado.length;
  const pending=r.analisar.length+r.parcial.length+r.naoEncontrado.length;
  $('ko').textContent=closed;$('kd').textContent=pending;
  $('km').textContent=`${r.parcial.length} parciais · ${r.analisar.length} analisar · ${r.naoEncontrado.length} não encontrados`;
