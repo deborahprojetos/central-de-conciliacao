@@ -13,7 +13,7 @@
       <div class="brand-mark">ID</div>
       <div>
         <h1>Conciliação Itaú × Dealer</h1>
-        <p>Pagamentos e títulos — conciliação por data, valor e agrupamento</p>
+        <p>Pagamentos e títulos — valor, favorecido e agrupamentos para revisão</p>
       </div>
     </div>
     <button id="clearBtn" class="btn btn-ghost" type="button">Limpar</button>
@@ -25,8 +25,7 @@
         <span class="eyebrow">CONCILIAÇÃO FINANCEIRA</span>
         <h2>Concilie pagamentos do Itaú com os títulos do Dealer.</h2>
         <p>
-          O cruzamento usa o título do <strong>Seu número</strong> do Itaú com a <strong>Nota Fiscal</strong> do Dealer,
-          respeitando cada linha individual. Empresas com o mesmo nome nunca são somadas. A data de baixa do Itaú pode corresponder à Dt. Caixa do Dealer no dia seguinte.
+          Para recebimentos por títulos, o cruzamento usa <strong>Seu número</strong> do Itaú e <strong>Nota Fiscal</strong> do Dealer. Para pagamentos, compara favorecido e valor, soma títulos relacionados e sinaliza vínculos incertos para revisão.
         </p>
       </div>
       <div class="formula-box">
@@ -89,14 +88,14 @@
         <article class="summary-card"><span>Títulos Itaú</span><strong id="kpiItau">0</strong><small id="kpiItauTotal">R$ 0,00</small></article>
         <article class="summary-card good"><span>Conciliados</span><strong id="kpiOk">0</strong><small id="kpiOkSub">Sem diferença</small></article>
         <article class="summary-card danger"><span>Divergências</span><strong id="kpiDiff">0</strong><small id="kpiMissing">0 não localizados</small></article>
-        <article class="summary-card warn"><span>Ajustes identificados</span><strong id="kpiAdjust">0</strong><small id="kpiAdjustSub">Juros / desconto</small></article>
+        <article class="summary-card warn"><span>Revisão / ajustes</span><strong id="kpiAdjust">0</strong><small id="kpiAdjustSub">Revisão, juros ou desconto</small></article>
       </div>
 
       <div class="card table-card">
         <div class="table-toolbar">
           <div class="tabs" role="tablist">
             <button class="tab active" data-view="exceptions" type="button">Divergências</button>
-            <button class="tab" data-view="adjustments" type="button">Juros e descontos</button>
+            <button class="tab" data-view="adjustments" type="button">Revisar / ajustes</button>
             <button class="tab" data-view="all" type="button">Todos</button>
             <button class="tab" data-view="dealerOnly" type="button">Somente Dealer</button>
           </div>
@@ -109,7 +108,7 @@
 
         <div class="legend">
           <span><i class="dot dot-red"></i> diferença / ausente</span>
-          <span><i class="dot dot-yellow"></i> juros ou desconto identificado</span>
+          <span><i class="dot dot-yellow"></i> revisar ou ajuste identificado</span>
           <span><i class="dot dot-green"></i> conciliado</span>
         </div>
 

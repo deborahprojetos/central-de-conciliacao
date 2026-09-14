@@ -430,7 +430,8 @@
       const date = h.findIndex(v => v === 'v' || v === 'data' || v.includes('data') || v.includes('dt pagamento'));
       const name = h.findIndex(v => v.includes('razao social') || v.includes('nome') || v.includes('favorecido') || v.includes('beneficiario'));
       const value = h.findIndex(v => v.includes('valor'));
-      if (date >= 0 && name >= 0 && value >= 0) return { row:r, date, name, value };
+      const cnpj = h.findIndex(v => v.includes('cpf/cnpj') || v.includes('cnpj') || v.includes('cpf'));
+      if (name >= 0 && value >= 0 && (date >= 0 || cnpj >= 0)) return { row:r, date, name, value, cnpj };
     }
     throw new Error('Não encontrei Data, Razão Social/Nome e Valor no arquivo de pagamentos do Itaú.');
   }
@@ -441,11 +442,11 @@
     for(let r=h.row+1;r<matrix.length;r++){
       const row=matrix[r]||[];
       const name=String(row[h.name]??'').trim();
-      const date=formatDateBR(row[h.date]);
+      const date=h.date>=0?formatDateBR(row[h.date]):'';
       const value=Math.abs(parseMoneyBR(row[h.value]));
-      if(!name || !date || !Number.isFinite(value) || value===0) continue;
+      if(!name || !Number.isFinite(value) || value===0) continue;
       const id='IP'+(++seq);
-      out.push({id,sourceRow:r+1,payee:name,date,value:round2(value),note:'',yourNumber:'',installment:''});
+      out.push({id,sourceRow:r+1,payee:name,cnpj:h.cnpj>=0?onlyDigits(row[h.cnpj]):'',date,value:round2(value),note:'',yourNumber:'',installment:''});
     }
     if(!out.length) throw new Error('O arquivo de pagamentos do Itaú foi aberto, mas nenhum pagamento válido foi encontrado.');
     return out;
@@ -494,15 +495,16 @@
       [/caixa economica federal|cef/i,'caixa'],[/receita|darf|secretaria da receita/i,'receita'],
       [/serpro|servico federal de processamento de dados/i,'serpro'],
       [/dealerup/i,'dealerup'],[/dealerspace/i,'dealerspace'],[/algar/i,'algar'],
-      [/lm transport/i,'lm transport'],[/volkswagen/i,'volkswagen'],[/mr despachante|costa almeida despachante/i,'despachante']
+      [/lm transport/i,'lm transport'],[/mr despachante|costa almeida despachante/i,'despachante']
     ];
     for(const [rx,k] of aliases) if(rx.test(n)) return k;
     return n;
   }
 
   function partySimilarity(a,b){
-    const A=new Set(normalizePartyKey(a).split(/\s+/).filter(x=>x.length>=3));
-    const B=new Set(normalizePartyKey(b).split(/\s+/).filter(x=>x.length>=3));
+    const generic=new Set(['empresa','comercio','servicos','ltda','sa','brasil','banco','pagamentos','instituicao','grupo']);
+    const A=new Set(normalizePartyKey(a).split(/\s+/).filter(x=>x.length>=3&&!generic.has(x)));
+    const B=new Set(normalizePartyKey(b).split(/\s+/).filter(x=>x.length>=3&&!generic.has(x)));
     if(!A.size||!B.size) return 0;
     let hit=0; for(const x of A) if(B.has(x)) hit++;
     return hit/Math.max(A.size,B.size);
@@ -547,75 +549,53 @@
     return hits.sort((a,b)=>a.items.length-b.items.length)[0]||null;
   }
 
-  function reconcilePayments(itauRows,dealerRows,options={}){
-    const tolerance=options.tolerance??MONEY_TOLERANCE;
-    const maxGroup=options.maxGroup??20;
-    const I=itauRows.map(x=>({...x,value:Math.abs(round2(x.value))})).filter(x=>Number.isFinite(x.value)&&x.value>0);
-    const D=dealerRows.map(x=>({...x,value:Math.abs(round2(x.value))})).filter(x=>Number.isFinite(x.value)&&x.value>0);
-    const usedI=new Set(), usedD=new Set(), results=[];
-    const dateScore=(i,d)=>{
-      const md=dayDiff(i.date,d.movementDate||d.date); const cd=dayDiff(i.date,d.cashDate);
-      if(Number.isFinite(md)&&md===0) return {score:0,relation:'movimento_mesmo_dia'};
-      if(Number.isFinite(cd)&&cd===1) return {score:1,relation:'caixa_dia_seguinte'};
-      if(Number.isFinite(cd)&&cd===0) return {score:2,relation:'caixa_mesmo_dia'};
-      if(Number.isFinite(md)&&Math.abs(md)<=1) return {score:4+Math.abs(md),relation:'movimento_proximo'};
-      return {score:20,relation:'data_diferente'};
-    };
-    for(const i of I){
-      const candidates=D.filter(d=>!usedD.has(d.id)&&Math.abs(d.value-i.value)<=tolerance)
-        .map(d=>({d,sim:partySimilarity(i.payee,d.name),ds:dateScore(i,d)}))
-        .filter(x=>x.sim>=0.25 || x.ds.score<=2)
-        .sort((a,b)=>a.ds.score-b.ds.score||b.sim-a.sim);
-      if(candidates.length){
-        const best=candidates[0].d; usedI.add(i.id); usedD.add(best.id);
-        results.push({...i,note:best.note||'',dealerGroupId:best.id,dealerValue:best.value,dealerPrincipal:best.value,dealerAdjusted:best.value,totalReceivedItau:i.value,adjustmentValue:0,dealerDate:best.cashDate||best.date,dealerMovementDate:best.movementDate||'',dateRelation:dateScore(i,best).relation,interest:0,discount:0,receipt:best.value,difference:round2(i.value-best.value),finalDifference:round2(i.value-best.value),status:'ok',reason:'Conciliado',matchedTitles:[best]});
-      }
-    }
-    // Passo 2: grupo exato por favorecido/entidade. É importante para pagamentos bancários
-    // agrupados, mesmo quando a Razão Social do Itaú é diferente do nome do Dealer.
-    // Ex.: R$ 1.034.212,00 no Itaú formado por 12 títulos da LM no Dealer.
-    for(const i of I){
-      if(usedI.has(i.id)) continue;
-      const pool=D.filter(d=>!usedD.has(d.id));
-      const exact=findExactPartyGroup(i.value,pool,tolerance);
-      if(exact && exact.items.length>1){
-        exact.items.forEach(d=>usedD.add(d.id)); usedI.add(i.id);
-        const principal=round2(exact.items.reduce((s,d)=>s+d.value,0));
-        const titles=exact.items.map(d=>d.note||d.parcel||d.name).filter(Boolean);
-        const dateInfo=exact.items.map(d=>dateScore(i,d)).sort((a,b)=>a.score-b.score)[0]||{relation:'data_diferente'};
-        results.push({...i,note:`${titles[0]||exact.key} + ${Math.max(0,titles.length-1)} títulos`,dealerGroupId:exact.items.map(d=>d.id).join(','),dealerValue:principal,dealerPrincipal:principal,dealerAdjusted:principal,totalReceivedItau:i.value,adjustmentValue:0,dealerDate:exact.items.map(d=>d.cashDate||d.date).filter(Boolean).sort()[0]||'',dealerMovementDate:exact.items.map(d=>d.movementDate||d.date).filter(Boolean).sort()[0]||'',dateRelation:dateInfo.relation,interest:0,discount:0,receipt:principal,difference:0,finalDifference:0,status:'grouped',reason:`Conciliado por agrupamento exato (${exact.items.length} títulos de ${exact.key})`,matchedTitles:exact.items});
-      }
-    }
-
-    for(const i of I){
-      if(usedI.has(i.id)) continue;
-      const pool=D.filter(d=>!usedD.has(d.id));
-      // Primeiro tenta por data e nome, mas permite agrupamento por valor quando a empresa é claramente relacionada.
-      const related=pool.filter(d=>partySimilarity(i.payee,d.name)>=0.25 || normalizePartyKey(i.payee)===normalizePartyKey(d.name));
-      const candidates=related.length?related:pool;
-      const combo=paymentCombinations(candidates,i.value,maxGroup,tolerance);
-      if(combo){
-        const sim=Math.max(...combo.items.map(d=>partySimilarity(i.payee,d.name)),0);
-        const ds=combo.items.map(d=>dateScore(i,d)).sort((a,b)=>a.score-b.score)[0]||{score:20,relation:'data_diferente'};
-        // Agrupamento sem relação nominal só é aceito quando o fechamento é exato e existe mais de um título.
-        if(sim>=0.25 || combo.items.length>1){
-          combo.items.forEach(d=>usedD.add(d.id)); usedI.add(i.id);
-          const principal=round2(combo.items.reduce((s,d)=>s+d.value,0));
-          const titles=combo.items.map(d=>d.note||d.parcel||d.name).filter(Boolean);
-          results.push({...i,note:titles.length===1?titles[0]:`${titles[0]||'Títulos'} + ${Math.max(0,titles.length-1)} títulos`,dealerGroupId:combo.items.map(d=>d.id).join(','),dealerValue:principal,dealerPrincipal:principal,dealerAdjusted:principal,totalReceivedItau:i.value,adjustmentValue:0,dealerDate:combo.items.map(d=>d.cashDate||d.date).filter(Boolean).sort()[0]||'',dealerMovementDate:combo.items.map(d=>d.movementDate||d.date).filter(Boolean).sort()[0]||'',dateRelation:ds.relation,interest:0,discount:0,receipt:principal,difference:0,finalDifference:0,status:'grouped',reason:`Conciliado por agrupamento (${combo.items.length} títulos)`,matchedTitles:combo.items});
+  function reconcilePayments(itauRows, dealerRows, options={}) {
+    const I=itauRows.map((x,n)=>({...x,id:`IP${n+1}`,value:Math.abs(round2(x.value))})).filter(x=>Number.isFinite(x.value)&&x.value>0);
+    const D=dealerRows.map((x,n)=>({...x,id:`DEX${n+1}`,value:Math.abs(round2(x.value))})).filter(x=>Number.isFinite(x.value)&&x.value>0);
+    const usedD=new Set(), results=[];
+    const cents=n=>Math.round(n*100);
+    const compatible=(i,d)=>partySimilarity(i.payee,d.name)>=0.4 || normalizePartyKey(i.payee)===normalizePartyKey(d.name);
+    // Encontra até duas soluções. Mais de uma combinação implica revisão, nunca baixa automática.
+    function combos(pool,target,maxSize=20) {
+      const items=pool.filter(d=>d.value<=target+0.01).sort((a,b)=>b.value-a.value);
+      const hits=[]; let visited=0;
+      const walk=(pos,sum,chosen)=>{
+        if(hits.length>=2 || ++visited>120000) return;
+        if(sum===cents(target)){hits.push(chosen.slice());return;}
+        if(sum>cents(target)||chosen.length>=maxSize) return;
+        for(let k=pos;k<items.length;k++){
+          const next=sum+cents(items[k].value);
+          if(next>cents(target))continue;
+          chosen.push(items[k]);walk(k+1,next,chosen);chosen.pop();
+          if(hits.length>=2||visited>120000)return;
         }
-      }
+      };
+      walk(0,0,[]);
+      return {hits,limited:visited>120000};
     }
-    // Prováveis divergências: mesma empresa e datas compatíveis, sem forçar por valor.
-    for(const i of I){
-      if(usedI.has(i.id)) continue;
-      const cand=D.filter(d=>!usedD.has(d.id)).map(d=>({d,sim:partySimilarity(i.payee,d.name),ds:dateScore(i,d),diff:Math.abs(i.value-d.value)}))
-        .filter(x=>x.sim>=0.5 && x.ds.score<=4).sort((a,b)=>a.diff-b.diff||a.ds.score-b.ds.score)[0];
-      if(cand){usedI.add(i.id);usedD.add(cand.d.id);results.push({...i,note:cand.d.note||'',dealerGroupId:cand.d.id,dealerValue:cand.d.value,dealerPrincipal:cand.d.value,dealerAdjusted:cand.d.value,totalReceivedItau:i.value,adjustmentValue:0,dealerDate:cand.d.cashDate||cand.d.date,dealerMovementDate:cand.d.movementDate||'',dateRelation:cand.ds.relation,interest:0,discount:0,receipt:cand.d.value,difference:round2(i.value-cand.d.value),finalDifference:round2(i.value-cand.d.value),status:'difference',reason:'Possível correspondência com diferença de valor',matchedTitles:[cand.d]});}
+    function add(i,items,status,reason) {
+      items.forEach(d=>usedD.add(d.id));
+      const amount=round2(items.reduce((sum,d)=>sum+d.value,0));
+      results.push({...i,note:items.map(d=>d.note||d.parcel||d.id).join(' + '),dealerGroupId:items.map(d=>d.id).join(','),dealerValue:amount,dealerPrincipal:amount,dealerAdjusted:amount,totalReceivedItau:i.value,adjustmentValue:0,dealerDate:items[0]?.cashDate||items[0]?.date||'',dealerMovementDate:items[0]?.movementDate||'',interest:0,discount:0,receipt:amount,difference:round2(i.value-amount),finalDifference:round2(i.value-amount),status,reason,matchedTitles:items});
     }
-    const itauOnly=I.filter(i=>!usedI.has(i.id)).map(i=>({...i,note:'',dealerValue:null,dealerPrincipal:null,dealerAdjusted:null,totalReceivedItau:i.value,difference:i.value,finalDifference:i.value,interest:0,discount:0,status:'missing',reason:'Não localizado no Dealer',matchedTitles:[]}));
-    const dealerOnly=D.filter(d=>!usedD.has(d.id)).map(d=>({id:d.id,payee:d.name,note:d.note||d.parcel||'',date:d.cashDate||d.date,dealerMovementDate:d.movementDate||'',dealerValue:d.value,dealerPrincipal:d.value,dealerAdjusted:d.value,totalReceivedItau:null,difference:-d.value,finalDifference:-d.value,interest:0,discount:0,status:'dealerOnly',reason:'Baixado no Dealer, não localizado no Itaú',matchedTitles:[d]}));
-    results.push(...itauOnly);
+    // Identidade e valor têm prioridade. Não se deve usar uma igualdade casual de valor
+    // para consumir um título de outro favorecido antes de procurar vínculos nominais.
+    for(const i of I) {
+      const pool=D.filter(d=>!usedD.has(d.id)&&compatible(i,d));
+      const exact=pool.filter(d=>cents(d.value)===cents(i.value));
+      if(exact.length){add(i,[exact[0]],exact.length>1?'review':'ok',exact.length>1?'Revisar: títulos de mesmo valor e favorecido':'Conciliado: favorecido e valor');continue;}
+      const found=combos(pool,i.value,options.maxGroup??20);
+      if(found.hits.length){add(i,found.hits[0],found.hits.length>1||found.limited?'review':'grouped',found.hits.length>1||found.limited?'Revisar: mais de uma composição possível':'Conciliado: soma exata do favorecido');continue;}
+      // Apenas candidatos de valor exato são sugeridos quando a identidade diverge.
+      const sameValue=D.filter(d=>!usedD.has(d.id)&&cents(d.value)===cents(i.value));
+      if(sameValue.length){add(i,[sameValue[0]],'review','Revisar: valor igual, favorecido diferente');continue;}
+      const remaining=D.filter(d=>!usedD.has(d.id));
+      const generic=combos(remaining,i.value,Math.min(options.maxGroup??6,6));
+      if(generic.hits.length){add(i,generic.hits[0],'review','Revisar: soma exata sem identidade do favorecido');continue;}
+      add(i,[],'missing',pool.length?'Não localizado: títulos do favorecido não fecham o pagamento':'Não localizado no Dealer');
+    }
+    const dealerOnly=D.filter(d=>!usedD.has(d.id)).map(d=>({id:d.id,payee:d.name,note:d.note||d.parcel||'',date:d.cashDate||d.date,dealerMovementDate:d.movementDate||'',dealerValue:d.value,dealerPrincipal:d.value,dealerAdjusted:d.value,totalReceivedItau:null,difference:-d.value,finalDifference:-d.value,interest:0,discount:0,status:'dealerOnly',reason:'Somente Dealer',matchedTitles:[d]}));
+    const itauOnly=results.filter(r=>r.status==='missing');
     return {results,dealerOnly,itauOnly,totals:{itauCount:I.length,dealerCount:D.length,itauValue:round2(I.reduce((s,x)=>s+x.value,0)),dealerValue:round2(D.reduce((s,x)=>s+x.value,0))}};
   }
 

@@ -635,6 +635,14 @@
     });
 
     try {
+      state.itauRows = C.extractItauPaymentRows(rows);
+      state.paymentMode = true;
+      state.files = [];
+      state.primaryFile = null;
+      setStatus(els.itauPasteStatus, `${state.itauRows.length} pagamentos Itaú identificados.`, 'ok');
+      return true;
+    } catch (_) {}
+    try {
       state.files = [];
       state.primaryFile = null;
       state.paymentMode = false;
@@ -708,9 +716,9 @@
     const rr = state.reconciliation.results;
     const total = rr.reduce((s,r) => s + r.value, 0);
     const ok = rr.filter(r => r.status === 'ok' || r.status === 'adjustment' || r.status === 'grouped').length;
-    const diffs = rr.filter(r => r.status === 'difference' || r.status === 'missing').length;
+    const diffs = rr.filter(r => ['difference','missing','review'].includes(r.status)).length;
     const missing = rr.filter(r => r.status === 'missing').length;
-    const adjustments = rr.filter(r => r.status === 'adjustment').length;
+    const adjustments = rr.filter(r => r.status === 'adjustment' || r.status === 'review').length;
     const withInterest = rr.filter(r => r.interest > C.MONEY_TOLERANCE).length;
     const withDiscount = rr.filter(r => r.discount > C.MONEY_TOLERANCE).length;
 
@@ -721,14 +729,14 @@
     $('kpiDiff').textContent = diffs;
     $('kpiMissing').textContent = `${missing} não localizado${missing === 1 ? '' : 's'}`;
     $('kpiAdjust').textContent = adjustments;
-    $('kpiAdjustSub').textContent = `${withInterest} com juros · ${withDiscount} com desconto`;
+    $('kpiAdjustSub').textContent = state.paymentMode ? `${rr.filter(r=>r.status==='review').length} para revisar` : `${withInterest} com juros · ${withDiscount} com desconto`;
   }
 
   function currentRows() {
     if (!state.reconciliation) return [];
     let rows;
-    if (state.view === 'exceptions') rows = state.reconciliation.results.filter(r => r.status === 'difference' || r.status === 'missing');
-    else if (state.view === 'adjustments') rows = state.reconciliation.results.filter(r => r.status === 'adjustment' || r.interest > C.MONEY_TOLERANCE || r.discount > C.MONEY_TOLERANCE);
+    if (state.view === 'exceptions') rows = state.reconciliation.results.filter(r => ['difference','missing','review'].includes(r.status));
+    else if (state.view === 'adjustments') rows = state.reconciliation.results.filter(r => r.status === 'adjustment' || r.status === 'review' || r.interest > C.MONEY_TOLERANCE || r.discount > C.MONEY_TOLERANCE);
     else if (state.view === 'dealerOnly') rows = state.reconciliation.dealerOnly;
     else rows = state.reconciliation.results;
 
@@ -740,10 +748,12 @@
   function statusHtml(r) {
     let cls = 'badge-ok';
     if (r.status === 'difference' || r.status === 'missing' || r.status === 'dealerOnly') cls = 'badge-error';
-    else if (r.status === 'adjustment' || r.status === 'grouped') cls = 'badge-warn';
+    else if (r.status === 'adjustment' || r.status === 'review' || r.status === 'grouped') cls = 'badge-warn';
 
     const details = [];
-    if (Number.isFinite(r.value)) details.push(`Recebido no Itaú ${brl(r.value)}`);
+    if (r.cnpj) details.push(`CPF/CNPJ Itaú ${r.cnpj}`);
+    if (r.matchedTitles?.length) details.push(`Dealer: ${r.matchedTitles.map(d=>`${d.note||d.parcel||d.id} (${d.name||''}: ${brl(d.value)})`).join(' + ')}`);
+    if (Number.isFinite(r.value)) details.push(`Valor Itaú ${brl(r.value)}`);
     if (r.receipt > C.MONEY_TOLERANCE) details.push(`Principal ${brl(r.receipt)}`);
     if (r.interest > C.MONEY_TOLERANCE) details.push(`Juros +${brl(r.interest)}`);
     if (r.discount > C.MONEY_TOLERANCE) details.push(`Desconto −${brl(r.discount)}`);
@@ -783,6 +793,8 @@
     if (!state.reconciliation || !window.XLSX) return;
     const rows = state.reconciliation.results.map(r => ({
       'Pagador': r.payee,
+      'CPF/CNPJ Itaú': r.cnpj || '',
+      'Títulos vinculados e credores Dealer': (r.matchedTitles||[]).map(d=>`${d.note||d.parcel||d.id} - ${d.name||''} - ${brl(d.value)}`).join(' + '),
       'Título Dealer': r.note,
       'Parcela': r.installment,
       'Seu número Itaú': r.yourNumber,
@@ -804,7 +816,7 @@
       'Data Dealer (Dt. Movimento)': r.dealerMovementDate || '',
       'Relação de datas': r.dateRelation || ''
     }));
-    const exceptions = rows.filter((_, i) => ['difference','missing'].includes(state.reconciliation.results[i].status));
+    const exceptions = rows.filter((_, i) => ['difference','missing','review'].includes(state.reconciliation.results[i].status));
     const dealerOnly = state.reconciliation.dealerOnly.map(r => ({
       'Título Dealer': r.note, 'Data Dealer (Dt. Caixa)': r.date, 'Data Dealer (Dt. Movimento)': r.dealerMovementDate || '', 'Recebimento Dealer': r.receipt,
       'Juros': r.interest, 'Desconto': r.discount, 'Valor Dealer (recebimento)': r.dealerValue, 'Valor Dealer ajustado': r.dealerAdjusted,
@@ -913,4 +925,3 @@
       els.mainMessage.style.color = '#c0392b';
     }
   }
-
