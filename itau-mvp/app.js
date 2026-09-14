@@ -89,6 +89,7 @@ function mapD(rows){
  let mult=exact(['TituloMultiplicador','Multiplicador']);
  if(mult<0)mult=specificIncludes(['titulo multiplicador']);
  let personCode=exact(['TituloPessoaCod','Pessoa Cod','Codigo Pessoa']);
+ let titleCode=exact(['TituloCodigo','Título','Titulo Cod']);
  if(a<0||b<0) throw Error('Não encontrei TituloPessoaNome e TituloValor no Excel do Dealer.');
  return rows.slice(1).map((r,i)=>{
    const name=String(r[a]??'').trim(),value=dm(r[b]),movementDate=c>=0?dt(r[c]):'',cashDate=cash>=0?dt(r[cash]):'';
@@ -99,7 +100,8 @@ function mapD(rows){
    if(cdText && !/pagamento de titulos/.test(classText))return null;
    if(Number.isFinite(multiplier) && multiplier>0)return null;
    const parcel=d>=0?String(r[d]??''):'';
-   return {id:'D'+i,name,value,date:movementDate||cashDate,movementDate,cashDate,title:parcel,parcel,note:parcel.split(/[\/-]/)[0].replace(/\D/g,''),personCode:personCode>=0?String(r[personCode]??''):'',history:histText,cdDescr:cdText};
+   const note=titleCode>=0?String(r[titleCode]??'').trim():parcel.split(/[\/-]/)[0].replace(/\D/g,'');
+   return {id:'D'+i,name,value,date:movementDate||cashDate,movementDate,cashDate,title:parcel,parcel,note,personCode:personCode>=0?String(r[personCode]??''):'',history:histText,cdDescr:cdText};
  }).filter(x=>x&&x.name&&Number.isFinite(x.value)&&x.value>0)
 }
 function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}
@@ -129,13 +131,13 @@ function renderReadableAnalysis(r){
  const review=all.filter(x=>['ANALISAR_CONCILIACAO','CONCILIADO_VALOR','ENCONTRADO_PARCIAL'].includes(x.status));
  const missing=all.filter(x=>x.status==='NAO_ENCONTRADO');
  const dealerOnly=r.all.filter(x=>!x.itau.length&&x.dealer.length);
- const refs=x=>x.dealer.map(d=>`${d.title||d.parcel||d.note||d.id} (${brl(d.value)})`).join(' + ');
+ const refs=x=>x.dealer.map(d=>`${d.note||d.title||d.parcel||d.id}${d.note&&d.parcel&&d.note!==d.parcel?` · parcela ${d.parcel}`:''} (${brl(d.value)})`).join(' + ');
  const names=x=>[...new Set(x.dealer.map(d=>d.name||d.payee).filter(Boolean))].join(' + ');
  const rows=(items,kind)=>items.length?items.map(x=>{
    const value=x.itau.reduce((sum,i)=>sum+i.value,0);
    const dealerValue=x.dealer.reduce((sum,d)=>sum+d.value,0);
    let reason=kind==='confirmed'?(x.dealer.length>1?`Soma de ${x.dealer.length} títulos do Dealer fecha o pagamento.`:'Favorecido e valor compatíveis.'):
-     kind==='missing'?'Pagamento sem vínculo confiável com títulos do Dealer.':
+     kind==='missing'?(x.reason||'Pagamento sem vínculo confiável com títulos do Dealer.'):
      (x.reason||'Verificar comprovante, favorecido e títulos.');
    if(kind==='review'&&x.status==='CONCILIADO_VALOR')reason='Valor igual, mas o nome do favorecido não confirma o vínculo.';
    if(kind==='review'&&x.status==='ENCONTRADO_PARCIAL')reason=`Possível vínculo com diferença de ${brl(value-dealerValue)}; conferir antes de conciliar.`;
