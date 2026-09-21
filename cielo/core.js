@@ -350,10 +350,10 @@
     return (cents(r.valorBruto) <= 0 || r.parcelaAtual <= 1) ? "02" : "03";
   }
 
-  function makeD(r, seq, liquidOverrideCents = null) {
+  function makeD(r, seq, liquidOverrideCents = null, settlementDate = null) {
     let s = D_TEMPLATE;
     const est = r.estabelecimento;
-    const pay = ddmmyyyy(r.dataCredito);
+    const pay = ddmmyyyy(settlementDate ? parseDate(settlementDate) : r.dataCredito);
     const type = typeCode(r);
     const liquidCents = liquidOverrideCents === null ? cents(r.valorLiquido) : liquidOverrideCents;
 
@@ -375,12 +375,12 @@
     return s;
   }
 
-  function makeE(r, seq, liquidOverrideCents = null) {
+  function makeE(r, seq, liquidOverrideCents = null, settlementDate = null) {
     let s = E_TEMPLATE;
     const est = r.estabelecimento;
     const auth = (r.autorizacao || "000000").padStart(6,"0").slice(-6);
     const nsu = (r.nsu || "000000").padStart(6,"0").slice(-6);
-    const pay = ddmmyyyy(r.dataCredito);
+    const pay = ddmmyyyy(settlementDate ? parseDate(settlementDate) : r.dataCredito);
     const sale8 = yyyymmdd(r.dataVenda);
     const saleBR = ddmmyyyy(r.dataVenda);
     const type = typeCode(r);
@@ -419,9 +419,10 @@
     return s;
   }
 
-  function makeHeader(parsed) {
+  function makeHeader(parsed, settlementDate = null) {
     const sum = summarize(parsed);
-    const maxDate = yyyymmdd(sum.maxPaymentDate);
+    const operationDate = settlementDate ? parseDate(settlementDate) : sum.maxPaymentDate;
+    const maxDate = yyyymmdd(operationDate);
     const headerEstablishment = parsed.rows.length
       ? String(parsed.rows[0].estabelecimento || "").padStart(10, "0").slice(-10)
       : "0000000000";
@@ -455,20 +456,22 @@
     return s;
   }
 
-  function buildCielo04(parsed, anticipationFee, selectedRows = null) {
+  function buildCielo04(parsed, anticipationFee, selectedRows = null, settlementDate = null) {
+    if (!settlementDate) throw new Error("Informe a data da baixa / antecipação.");
+    const baixaDate = parseDate(settlementDate);
     const plan = processingPlan(parsed, anticipationFee, selectedRows);
     const allocationByRow = new Map(
       plan.allocations.map(a => [String(a.sourceRow), a.residualCents])
     );
-    const lines = [makeHeader(parsed)];
+    const lines = [makeHeader(parsed, baixaDate)];
 
     parsed.rows.forEach((r,i)=>{
       const key = String(r.sourceRow);
       const override = allocationByRow.has(key)
         ? allocationByRow.get(key)
         : null;
-      lines.push(makeD(r, i+1, override));
-      lines.push(makeE(r, i+1, override));
+      lines.push(makeD(r, i+1, override, baixaDate));
+      lines.push(makeE(r, i+1, override, baixaDate));
     });
 
     lines.push(makeTrailer(parsed, cents(plan.cielo04)));
@@ -482,13 +485,16 @@
     return lines.join("\r\n") + "\r\n";
   }
 
-  function buildControlReport(parsed, anticipationFee, selectedRows = null) {
+  function buildControlReport(parsed, anticipationFee, selectedRows = null, settlementDate = null) {
+    if (!settlementDate) throw new Error("Informe a data da baixa / antecipação.");
+    const baixaDate = parseDate(settlementDate);
     const s = summarize(parsed);
     const plan = processingPlan(parsed, anticipationFee, selectedRows);
     const lines = [
       "CONTROLE CIELO → DEALER",
       "",
       "TOTAL A BAIXAR NO DEALER: " + moneyBR(plan.totalBaixa),
+      "DATA DA BAIXA / ANTECIPAÇÃO: " + dateBR(baixaDate),
       "",
       "ETAPA 1 - BAIXA MANUAL DA NOTA DE DÉBITO",
       "Nota de Débito total: " + moneyBR(plan.notaDebito),
@@ -538,7 +544,7 @@
   }
 
   global.CieloCore = {
-    REQUIRED, CONFIG, parseRows, summarize, moneyBR, dateBR,
+    REQUIRED, CONFIG, parseRows, summarize, moneyBR, dateBR, parseDate,
     eligibleNoteCandidates, suggestedNoteAllocation, buildNoteAllocation,
     transactionChain, processingPlan, buildCielo04, buildControlReport
   };

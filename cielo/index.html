@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cielo → Dealer</title>
-<link rel="stylesheet" href="styles.css?v=44">
+<link rel="stylesheet" href="styles.css?v=45">
 </head>
 <body>
 <header>
@@ -32,8 +32,14 @@
 
     <div class="field">
       <label for="feeInput">Taxa total da antecipação / Nota de Débito</label>
-      <div class="money-input"><span>R$</span><input id="feeInput" value="10.775,21" inputmode="decimal"></div>
+      <div class="money-input"><span>R$</span><input id="feeInput" value="0,00" inputmode="decimal"></div>
       <small>A Nota de Débito é baixada manualmente nos títulos selecionados antes da importação. O CIELO04 levará somente os saldos restantes.</small>
+    </div>
+
+    <div class="field">
+      <label for="settlementDateInput">Data da baixa / antecipação</label>
+      <input id="settlementDateInput" class="date-input" type="date">
+      <small>Esta será a data operacional gravada no CIELO04 para a baixa no Dealer. As datas originais de venda permanecem preservadas.</small>
     </div>
 
     <button id="analyzeBtn" class="button primary">Analisar planilha</button>
@@ -51,6 +57,7 @@
         <div class="total-clear"><span>Total a baixar no Dealer</span><strong id="totalClear">—</strong></div>
         <div class="note"><span>1. Nota de Débito manual</span><strong id="noteFee">—</strong></div>
         <div class="cielo04"><span>2. CIELO04</span><strong id="cielo04Total">—</strong></div>
+        <div><span>Data da baixa</span><strong id="settlementDateSummary">—</strong></div>
       </div>
       <div class="est">Estabelecimento(s): <strong id="establishments">—</strong></div>
     </section>
@@ -143,11 +150,11 @@
   </div>
 </main>
 
-<footer>Configuração validada para o fluxo France · CIELO V44</footer>
+<footer>Configuração validada para o fluxo France · CIELO V45</footer>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="core.js?v=44"></script>
-<script src="app.js?v=44"></script>
+<script src="core.js?v=45"></script>
+<script src="app.js?v=45"></script>
 
 
 

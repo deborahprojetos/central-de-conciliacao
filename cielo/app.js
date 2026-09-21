@@ -10,6 +10,7 @@
 
   const fileInput = $("fileInput");
   const feeInput = $("feeInput");
+  const settlementDateInput = $("settlementDateInput");
   const analyzeBtn = $("analyzeBtn");
   const confirmBox = $("confirmBox");
   const downloadTxt = $("downloadTxt");
@@ -25,6 +26,16 @@
     else if (s.includes(",")) s = s.replace(",",".");
     const n = Number(s);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  function getSettlementDate() {
+    const value = (settlementDateInput.value || "").trim();
+    if (!value) return null;
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
   }
 
   async function readWorkbook(file) {
@@ -179,6 +190,12 @@
       return;
     }
 
+    const settlementDate = getSettlementDate();
+    if (!settlementDate) {
+      showError("Informe a data da baixa / antecipação.");
+      return;
+    }
+
     try {
       const records = await readWorkbook(file);
       parsed = CieloCore.parseRows(records);
@@ -223,6 +240,8 @@
     $("noteFee").textContent = CieloCore.moneyBR(fee);
     $("cielo04Total").textContent = plan ? CieloCore.moneyBR(plan.cielo04) : "—";
     $("establishments").textContent = summary.establishments.join(", ");
+    const settlementDate = getSettlementDate();
+    $("settlementDateSummary").textContent = settlementDate ? CieloCore.dateBR(settlementDate) : "—";
     $("cielo04AllocationTotal").textContent = plan ? CieloCore.moneyBR(plan.cielo04) : "—";
   }
 
@@ -234,7 +253,7 @@
   function toggleDownloads() {
     let ok = false;
     try {
-      if (parsed && selectedRows.length && confirmBox.checked) {
+      if (parsed && selectedRows.length && confirmBox.checked && getSettlementDate()) {
         const plan = getPlan();
         ok = Math.abs(plan.notaDebito - parseFee()) < 0.001;
       }
@@ -272,7 +291,9 @@
   downloadTxt.addEventListener("click", ()=>{
     if (!parsed || !confirmBox.checked) return;
     try {
-      const txt = CieloCore.buildCielo04(parsed, parseFee(), allocationRows());
+      const settlementDate = getSettlementDate();
+      if (!settlementDate) throw new Error("Informe a data da baixa / antecipação.");
+      const txt = CieloCore.buildCielo04(parsed, parseFee(), allocationRows(), settlementDate);
       downloadText(
         outputTxtName(),
         txt,
@@ -284,7 +305,9 @@
   downloadControl.addEventListener("click", ()=>{
     if (!parsed || !confirmBox.checked) return;
     try {
-      const report = CieloCore.buildControlReport(parsed, parseFee(), allocationRows());
+      const settlementDate = getSettlementDate();
+      if (!settlementDate) throw new Error("Informe a data da baixa / antecipação.");
+      const report = CieloCore.buildControlReport(parsed, parseFee(), allocationRows(), settlementDate);
       downloadText(
         "CONTROLE_NOTA_DEBITO_" + sourceName + ".txt",
         report,
@@ -297,7 +320,16 @@
     $("fileName").textContent = fileInput.files[0] ? fileInput.files[0].name : "Nenhum arquivo selecionado";
   });
 
+  feeInput.addEventListener("focus", () => {
+    if (feeInput.value.trim() === "0,00") feeInput.select();
+  });
+
   feeInput.addEventListener("change", () => {
     if (parsed) selectAutomatic();
+  });
+
+  settlementDateInput.addEventListener("change", () => {
+    if (parsed) renderSummary(parseFee());
+    toggleDownloads();
   });
 })();
