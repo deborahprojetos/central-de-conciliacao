@@ -170,7 +170,8 @@
           parcelaRaw: text(raw["Número da parcela"]),
           valorBruto: moneyNumber(raw["Valor bruto"]),
           taxaAdm: moneyNumber(raw["Taxa/tarifa"]),
-          valorLiquido: moneyNumber(raw["Valor líquido"])
+          valorLiquido: moneyNumber(raw["Valor líquido"]),
+          tipoLancamento: text(raw["Tipo de lançamento"] || raw["Tipo do lançamento"] || "")
         });
       } catch (e) {
         warnings.push(`Linha ${i+2}: ${e.message}.`);
@@ -230,12 +231,30 @@
     const feeCents = cents(anticipationFee);
     if (feeCents <= 0) return [];
     return parsed.rows
-      .filter(r =>
-        cents(r.valorLiquido) > 0 &&
-        r.autorizacao &&
-        r.nsu &&
-        r.parcelaAtual >= 1
-      )
+      .filter(r => {
+        const tipo = String(r.tipoLancamento || "")
+          .normalize("NFD")
+          .replace(/[\\u0300-\\u036f]/g, "")
+          .toLowerCase()
+          .trim();
+
+        // Regras permanentes de elegibilidade para a Nota de Débito:
+        // 1) "Valor cedido em negociação" não é um recebível disponível
+        //    para compor a baixa manual da Nota de Débito.
+        // 2) A autorização 006896 foi baixada indevidamente e fica
+        //    permanentemente bloqueada para novas alocações.
+        const cedido = tipo.includes("valor cedido em negociacao");
+        const bloqueado = String(r.autorizacao || "").trim() === "006896";
+
+        return (
+          cents(r.valorLiquido) > 0 &&
+          r.autorizacao &&
+          r.nsu &&
+          r.parcelaAtual >= 1 &&
+          !cedido &&
+          !bloqueado
+        );
+      })
       .sort((a,b)=>
         cents(b.valorLiquido)-cents(a.valorLiquido) ||
         a.dataCredito-b.dataCredito ||
@@ -243,6 +262,12 @@
       );
   }
 
+  // A seleção da Nota de Débito nunca utiliza:
+  // - lançamentos "Valor cedido em negociação";
+  // - autorização 006896, já baixada indevidamente.
+  // Esses registros continuam no processamento/arquivo, mas não são
+  // candidatos para a baixa manual da Nota de Débito.
+  //
   // A Nota de Débito pode ser maior que qualquer recebível individual.
   // Nesse caso ela é distribuída em vários títulos, começando pelos maiores.
   function buildNoteAllocation(parsed, anticipationFee, selectedRows = null) {
