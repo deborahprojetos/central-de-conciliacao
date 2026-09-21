@@ -243,6 +243,13 @@
     downloadControl.disabled = !ok;
   }
 
+
+  function outputTxtName() {
+    const ests = summary && Array.isArray(summary.establishments) ? summary.establishments : [];
+    const suffix = ests.length === 1 ? ests[0] : (ests.length > 1 ? "MULTI" : "CIELO");
+    return "CIELO04D_" + suffix + "_IMPORTACAO.TXT";
+  }
+
   function downloadText(name, content, type) {
     const blob = new Blob([content], {type:type || "text/plain;charset=windows-1252"});
     const url = URL.createObjectURL(blob);
@@ -267,7 +274,7 @@
     try {
       const txt = CieloCore.buildCielo04(parsed, parseFee(), allocationRows());
       downloadText(
-        "CIELO04D_" + CieloCore.CONFIG.primaryEstablishment + "_IMPORTACAO.TXT",
+        outputTxtName(),
         txt,
         "text/plain;charset=windows-1252"
       );

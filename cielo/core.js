@@ -234,7 +234,7 @@
       .filter(r => {
         const tipo = String(r.tipoLancamento || "")
           .normalize("NFD")
-          .replace(/[\\u0300-\\u036f]/g, "")
+          .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase()
           .trim();
 

@@ -1,0 +1,16 @@
+V44 - CIELO04 - CORRECAO DE GERACAO E CACHE
+
+Correcoes:
+- Cache-busting em styles.css, core.js e app.js (?v=44) para impedir o navegador/Cloudflare de reutilizar a versao antiga com erro "row is not defined".
+- Regra /cielo/* com Cache-Control: no-cache, no-store, must-revalidate.
+- Corrigida a normalizacao de acentos do Tipo de lancamento. "Valor cedido em negociacao" permanece no processamento, mas nao pode ser selecionado para Nota de Debito.
+- Autorizacao 006896 continua bloqueada para Nota de Debito.
+- Nome do TXT nao usa mais primaryEstablishment=null. Um estabelecimento gera CIELO04D_<ESTAB>_IMPORTACAO.TXT; multiplos geram CIELO04D_MULTI_IMPORTACAO.TXT.
+- Footer identifica CIELO V44 para conferencia visual apos o deploy.
+
+Mantidas:
+- multiplos estabelecimentos nos registros D/E;
+- distribuicao da Nota de Debito em varios titulos;
+- ultimo titulo parcialmente utilizado leva somente o saldo residual ao CIELO04;
+- titulos integralmente alocados permanecem com residual zero conforme regra da versao anterior;
+- posicoes 18-19 = parcela atual; 20-21 = total de parcelas.
