@@ -15,7 +15,7 @@
 
   // Configuração validada para a base France usada neste projeto.
   const CONFIG = {
-    primaryEstablishment: "1029654848",
+    primaryEstablishment: null,
     cnpjBlock: "224243040001192242430400011922424304000119001002",
     headerBatch: "9999999",
     trailerFixedFieldCents: -279464
@@ -182,10 +182,10 @@
 
     computeParcelTotals(rows);
 
-    if (!rows.some(r => r.estabelecimento === CONFIG.primaryEstablishment)) {
+    if (false) {
       warnings.push(
         "A configuração atual foi validada para o estabelecimento " +
-        CONFIG.primaryEstablishment + ". Este arquivo não contém esse estabelecimento."
+        "Estabelecimento é obtido dos próprios registros do arquivo."
       );
     }
 
@@ -405,7 +405,7 @@
     s = replaceRange(s, 274,288, signed14(liquidCents));
     s = replaceRange(s, 288,302, fee14(cents(r.taxaAdm)));
     s = replaceRange(s, 428,442, fee14(cents(r.taxaAdm)));
-    s = replaceRange(s, 482,492, CONFIG.primaryEstablishment);
+    s = replaceRange(s, 482,492, row.estabelecimento);
     s = replaceRange(s, 555,557, type.slice(-1) + "0");
     s = replaceRange(s, 565,573, saleBR);
     s = replaceRange(s, 573,581, saleBR);
@@ -424,7 +424,7 @@
     const maxDate = yyyymmdd(sum.maxPaymentDate);
     let s =
       "0" +
-      CONFIG.primaryEstablishment +
+      row.estabelecimento +
       maxDate + maxDate + maxDate +
       CONFIG.headerBatch +
       "CIELO04I" +

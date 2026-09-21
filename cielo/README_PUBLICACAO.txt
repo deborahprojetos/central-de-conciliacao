@@ -40,7 +40,7 @@ Não é necessário:
 
 SAÍDAS
 ------
-1. CIELO04D_1029654848_IMPORTACAO.TXT
+1. CIELO04D__IMPORTACAO.TXT
 2. CONTROLE_NOTA_DEBITO_<arquivo>.txt
 
 PUBLICAÇÃO NETLIFY
@@ -51,7 +51,7 @@ Não requer Python nem instalação local.
 OBSERVAÇÃO
 ----------
 A configuração desta versão foi validada para o fluxo France /
-estabelecimento principal 1029654848.
+estabelecimento principal .
 
 
 ATUALIZAÇÃO v0.3
