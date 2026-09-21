@@ -1,0 +1,12 @@
+VALIDAÇÃO DA CENTRAL
+====================
+
+- cielo: JavaScript OK
+- difal: JavaScript OK
+- itau-dealer: JavaScript OK
+- cielo: referências locais OK
+- difal: referências locais OK
+- itau-dealer: referências locais OK
+- menu central: 3 links OK
+
+Estrutura pronta para um único deploy no Netlify.

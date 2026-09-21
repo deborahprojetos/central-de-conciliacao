@@ -1,0 +1,3 @@
+Central V26
+Alterado somente itau-mvp para melhorar o feedback visual de upload e processamento.
+Demais módulos preservados em relação à V25.

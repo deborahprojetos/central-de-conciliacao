@@ -1,0 +1,7 @@
+ATUALIZAÇÃO V35
+
+Correção Itaú x Dealer:
+- Ajustada chave de conciliação para utilizar Seu Número Itaú removendo sufixo de parcela quando necessário.
+- Compatibilidade com Dealer onde Nota Fiscal corresponde ao prefixo do Seu Número.
+- Corrige casos como 404951003 -> Nota Fiscal 404951.
+- Mantida estrutura das aplicações existentes.

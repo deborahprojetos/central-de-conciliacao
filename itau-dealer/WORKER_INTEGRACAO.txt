@@ -1,0 +1,7 @@
+Preparação para Cloudflare Worker OCR.
+
+Endpoint configurado:
+https://conciliacao-ocr.projetosdcfb.workers.dev
+
+Próxima etapa:
+conectar o fluxo de upload do PDF ao endpoint e substituir o OCR local.

@@ -1,0 +1,2 @@
+V37 — Correção do botão Analisar conciliação na tela Itaú × Dealer MVP
+O leitor de pagamentos aceita linhas coladas com favorecido, CPF/CNPJ e valor negativo sem data, inclusive valor na linha seguinte. O botão é habilitado quando houver pagamentos válidos e movimentos Dealer carregados. Mantém as quatro aplicações e as melhorias v36.
