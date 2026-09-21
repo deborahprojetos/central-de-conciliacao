@@ -1,0 +1,28 @@
+REGRA OPERACIONAL CIELO - V41
+
+1. A Nota de Débito pode ser distribuída em vários títulos.
+2. A Central sugere os títulos e informa:
+   - autorização;
+   - NSU;
+   - parcela;
+   - valor original.
+3. A baixa da Nota de Débito é feita manualmente no Dealer ANTES do CIELO04.
+4. Título totalmente consumido pela Nota de Débito:
+   - saldo no CIELO04 = R$ 0,00.
+5. Último título parcial:
+   - saldo no CIELO04 = valor original - valor da baixa manual.
+6. Títulos não selecionados permanecem com o valor integral.
+7. O CIELO04 não baixa a Nota de Débito novamente.
+
+Teste V41:
+- Nota de Débito: R$ 129.143,80
+- Total líquido: R$ 2.406.774,73
+- CIELO04: R$ 2.277.630,93
+- 13 títulos sugeridos
+- Último título: R$ 7.456,64
+- Baixa manual nesse título: R$ 4.202,37
+- Saldo no CIELO04: R$ 3.254,27
+
+Observação: a validação V41 registra uma divergência de estabelecimento
+(0002398818 no arquivo de teste versus 1029654848 na configuração atual).
+Essa questão NÃO foi alterada nesta atualização.

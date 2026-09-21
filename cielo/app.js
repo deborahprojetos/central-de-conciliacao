@@ -5,13 +5,12 @@
   let parsed = null;
   let summary = null;
   let candidates = [];
-  let selected = null;
+  let selectedRows = [];
   let sourceName = "CIELO";
 
   const fileInput = $("fileInput");
   const feeInput = $("feeInput");
   const analyzeBtn = $("analyzeBtn");
-  const candidateSelect = $("candidateSelect");
   const confirmBox = $("confirmBox");
   const downloadTxt = $("downloadTxt");
   const downloadControl = $("downloadControl");
@@ -33,8 +32,6 @@
     const wb = XLSX.read(buf, {type:"array", cellDates:true});
     if (!wb.SheetNames.length) throw new Error("O Excel não possui abas.");
     const ws = wb.Sheets[wb.SheetNames[0]];
-    // A Cielo exporta relatórios com título, filtros e totalizadores antes da tabela.
-    // Detecta automaticamente a linha real do cabeçalho.
     const range = XLSX.utils.decode_range(ws["!ref"]);
     let headerRow = null;
     const requiredMarkers = ["Data de pagamento","Valor bruto","Valor líquido","NSU/DOC"];
@@ -58,6 +55,109 @@
       dateNF:"dd/mm/yyyy",
       range: headerRow
     });
+  }
+
+  function allocationRows() {
+    return selectedRows
+      .map(row => candidates.find(r => String(r.sourceRow) === String(row.sourceRow)))
+      .filter(Boolean);
+  }
+
+  function getPlan() {
+    return CieloCore.processingPlan(parsed, parseFee(), allocationRows());
+  }
+
+  function renderAllocation() {
+    const host = $("allocationBody");
+    const search = ($("allocationSearch").value || "").trim().toLowerCase();
+    const selectedSet = new Set(selectedRows.map(r => String(r.sourceRow)));
+
+    const visible = candidates
+      .filter(r => {
+        if (!search) return true;
+        return [
+          r.autorizacao, r.nsu, r.parcelaAtual + "/" + r.totalParcelas,
+          CieloCore.dateBR(r.dataCredito), CieloCore.moneyBR(r.valorLiquido)
+        ].join(" ").toLowerCase().includes(search);
+      })
+      .slice(0, 80);
+
+    host.innerHTML = "";
+    visible.forEach(r => {
+      const checked = selectedSet.has(String(r.sourceRow));
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td><input type="checkbox" class="allocation-check" data-row="${r.sourceRow}" ${checked ? "checked" : ""}></td>` +
+        `<td>${CieloCore.dateBR(r.dataCredito)}</td>` +
+        `<td>${r.autorizacao}</td>` +
+        `<td>${r.nsu}</td>` +
+        `<td>${r.parcelaAtual}/${r.totalParcelas}</td>` +
+        `<td class="money">${CieloCore.moneyBR(r.valorLiquido)}</td>`;
+      host.appendChild(tr);
+    });
+
+    host.querySelectorAll(".allocation-check").forEach(chk => {
+      chk.addEventListener("change", () => {
+        const row = candidates.find(r => String(r.sourceRow) === String(chk.dataset.row));
+        if (!row) return;
+        if (chk.checked) {
+          if (!selectedSet.has(String(row.sourceRow))) selectedRows.push(row);
+        } else {
+          selectedRows = selectedRows.filter(r => String(r.sourceRow) !== String(row.sourceRow));
+        }
+        refreshAllocation();
+      });
+    });
+  }
+
+  function refreshAllocation() {
+    try {
+      const plan = getPlan();
+      $("allocationStatus").className = "allocation-status ok";
+      $("allocationStatus").textContent =
+        `${plan.selectedCount} título(s) selecionado(s) • ` +
+        `ND alocada: ${CieloCore.moneyBR(plan.notaDebito)} • ` +
+        `CIELO04: ${CieloCore.moneyBR(plan.cielo04)}`;
+
+      $("selectedCount").textContent = String(plan.selectedCount);
+      $("selectedTotal").textContent = CieloCore.moneyBR(plan.selectedTotal);
+
+      const map = new Map(plan.allocations.map(a => [String(a.sourceRow), a]));
+      const host = $("allocationDetails");
+      host.innerHTML = "";
+      plan.allocations.forEach(a => {
+        const r = a.row;
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${CieloCore.dateBR(r.dataCredito)}</td>` +
+          `<td>${r.autorizacao}</td>` +
+          `<td>${r.nsu}</td>` +
+          `<td>${r.parcelaAtual}/${r.totalParcelas}</td>` +
+          `<td class="money">${CieloCore.moneyBR(a.originalCents/100)}</td>` +
+          `<td class="money">${CieloCore.moneyBR(a.noteCents/100)}</td>` +
+          `<td class="money residual">${CieloCore.moneyBR(a.residualCents/100)}</td>`;
+        host.appendChild(tr);
+      });
+
+      renderSummary(parseFee(), plan);
+      toggleDownloads();
+    } catch (e) {
+      $("allocationStatus").className = "allocation-status error";
+      $("allocationStatus").textContent = e.message || String(e);
+      $("selectedCount").textContent = String(selectedRows.length);
+      $("selectedTotal").textContent = "—";
+      $("allocationDetails").innerHTML = "";
+      toggleDownloads();
+    }
+  }
+
+  function selectAutomatic() {
+    const fee = parseFee();
+    if (!parsed || fee <= 0) return;
+    const suggested = CieloCore.suggestedNoteAllocation(parsed, fee);
+    selectedRows = suggested.allocations.map(a => a.row);
+    renderAllocation();
+    refreshAllocation();
   }
 
   async function analyze() {
@@ -86,32 +186,16 @@
       candidates = CieloCore.eligibleNoteCandidates(parsed, fee);
       sourceName = file.name.replace(/\.[^.]+$/,"") || "CIELO";
 
-      renderSummary(fee);
-
       if (!candidates.length) {
-        throw new Error(
-          "Nenhum título com autorização, NSU e parcela possui valor líquido suficiente para " +
-          CieloCore.moneyBR(fee) + "."
-        );
+        throw new Error("Nenhum título válido para alocação da Nota de Débito foi encontrado.");
       }
 
-      candidateSelect.innerHTML = "";
-      candidates.forEach((r,idx)=>{
-        const opt = document.createElement("option");
-        opt.value = String(r.sourceRow);
-        opt.textContent =
-          (idx===0 ? "Sugestão automática — " : "") +
-          CieloCore.dateBR(r.dataCredito) +
-          " | Aut. " + r.autorizacao +
-          " | NSU " + r.nsu +
-          " | Parcela " + r.parcelaAtual + "/" + r.totalParcelas +
-          " | " + CieloCore.moneyBR(r.valorLiquido);
-        candidateSelect.appendChild(opt);
-      });
+      const suggested = CieloCore.suggestedNoteAllocation(parsed, fee);
+      selectedRows = suggested.allocations.map(a => a.row);
 
-      selected = candidates[0];
-      candidateSelect.value = String(selected.sourceRow);
-      renderSelected(fee);
+      renderSummary(fee, CieloCore.processingPlan(parsed, fee, selectedRows));
+      renderAllocation();
+      refreshAllocation();
 
       if (parsed.warnings.length) {
         $("warningBox").textContent =
@@ -128,56 +212,18 @@
     }
   }
 
-  function renderSummary(fee) {
-    const plan = CieloCore.processingPlan(parsed, fee, candidates[0]);
+  function renderSummary(fee, plan = null) {
+    if (!plan && parsed) {
+      try { plan = CieloCore.processingPlan(parsed, fee, selectedRows); } catch (_) {}
+    }
     $("titles").textContent = summary.titles.toLocaleString("pt-BR");
     $("gross").textContent = CieloCore.moneyBR(summary.gross);
     $("adminFee").textContent = CieloCore.moneyBR(summary.fee);
-    $("totalClear").textContent = CieloCore.moneyBR(plan.totalBaixa);
-    $("noteFee").textContent = CieloCore.moneyBR(plan.notaDebito);
-    $("cielo04Total").textContent = CieloCore.moneyBR(plan.cielo04);
+    $("totalClear").textContent = CieloCore.moneyBR(summary.net);
+    $("noteFee").textContent = CieloCore.moneyBR(fee);
+    $("cielo04Total").textContent = plan ? CieloCore.moneyBR(plan.cielo04) : "—";
     $("establishments").textContent = summary.establishments.join(", ");
-  }
-
-  function renderSelected(fee) {
-    if (!selected) return;
-    $("selAuth").textContent = selected.autorizacao;
-    $("selNsu").textContent = selected.nsu;
-    $("selParcel").textContent = selected.parcelaAtual + "/" + selected.totalParcelas;
-    $("selDate").textContent = CieloCore.dateBR(selected.dataCredito);
-    const plan = CieloCore.processingPlan(parsed, fee, selected);
-    $("selValue").textContent = CieloCore.moneyBR(selected.valorLiquido);
-    $("noteValue").textContent = CieloCore.moneyBR(fee);
-    $("residualValue").textContent = CieloCore.moneyBR(plan.saldoTituloCielo04);
-
-    const chain = CieloCore.transactionChain(parsed, selected);
-    const host = $("chain");
-    host.innerHTML = "";
-    chain.forEach((r,idx)=>{
-      if (idx) {
-        const ar = document.createElement("span");
-        ar.className = "arrow";
-        ar.textContent = "→";
-        host.appendChild(ar);
-      }
-      const box = document.createElement("div");
-      box.className = "chain-item" + (r.sourceRow===selected.sourceRow ? " selected" : "");
-      box.innerHTML =
-        `<small>${CieloCore.dateBR(r.dataCredito)}</small>` +
-        `<strong>Parcela ${r.parcelaAtual}/${r.totalParcelas}</strong>` +
-        `<span>Original: ${CieloCore.moneyBR(r.valorLiquido)}</span>` +
-        (r.sourceRow===selected.sourceRow ? `<em>Após Nota de Débito: ${CieloCore.moneyBR(plan.saldoTituloCielo04)}</em>` : "");
-      host.appendChild(box);
-    });
-
-    $("mapping").textContent =
-      "CIELO04: posições 18–19 = " +
-      String(selected.parcelaAtual).padStart(2,"0") +
-      " | posições 20–21 = " +
-      String(selected.totalParcelas).padStart(2,"0");
-
-    confirmBox.checked = false;
-    toggleDownloads();
+    $("cielo04AllocationTotal").textContent = plan ? CieloCore.moneyBR(plan.cielo04) : "—";
   }
 
   function showError(msg) {
@@ -186,7 +232,13 @@
   }
 
   function toggleDownloads() {
-    const ok = Boolean(parsed && selected && confirmBox.checked);
+    let ok = false;
+    try {
+      if (parsed && selectedRows.length && confirmBox.checked) {
+        const plan = getPlan();
+        ok = Math.abs(plan.notaDebito - parseFee()) < 0.001;
+      }
+    } catch (_) {}
     downloadTxt.disabled = !ok;
     downloadControl.disabled = !ok;
   }
@@ -205,34 +257,40 @@
 
   analyzeBtn.addEventListener("click", analyze);
 
-  candidateSelect.addEventListener("change", ()=>{
-    selected = candidates.find(r=>String(r.sourceRow)===candidateSelect.value) || null;
-    renderSelected(parseFee());
-  });
+  $("autoSelectBtn").addEventListener("click", selectAutomatic);
+  $("allocationSearch").addEventListener("input", renderAllocation);
 
   confirmBox.addEventListener("change", toggleDownloads);
 
   downloadTxt.addEventListener("click", ()=>{
-    if (!parsed || !selected || !confirmBox.checked) return;
-    const txt = CieloCore.buildCielo04(parsed, selected, parseFee());
-    downloadText(
-      "CIELO04D_" + CieloCore.CONFIG.primaryEstablishment + "_IMPORTACAO.TXT",
-      txt,
-      "text/plain;charset=windows-1252"
-    );
+    if (!parsed || !confirmBox.checked) return;
+    try {
+      const txt = CieloCore.buildCielo04(parsed, parseFee(), allocationRows());
+      downloadText(
+        "CIELO04D_" + CieloCore.CONFIG.primaryEstablishment + "_IMPORTACAO.TXT",
+        txt,
+        "text/plain;charset=windows-1252"
+      );
+    } catch(e) { showError(e.message || String(e)); }
   });
 
   downloadControl.addEventListener("click", ()=>{
-    if (!parsed || !selected || !confirmBox.checked) return;
-    const report = CieloCore.buildControlReport(parsed, parseFee(), selected);
-    downloadText(
-      "CONTROLE_NOTA_DEBITO_" + sourceName + ".txt",
-      report,
-      "text/plain;charset=utf-8"
-    );
+    if (!parsed || !confirmBox.checked) return;
+    try {
+      const report = CieloCore.buildControlReport(parsed, parseFee(), allocationRows());
+      downloadText(
+        "CONTROLE_NOTA_DEBITO_" + sourceName + ".txt",
+        report,
+        "text/plain;charset=utf-8"
+      );
+    } catch(e) { showError(e.message || String(e)); }
   });
 
   fileInput.addEventListener("change", ()=>{
     $("fileName").textContent = fileInput.files[0] ? fileInput.files[0].name : "Nenhum arquivo selecionado";
+  });
+
+  feeInput.addEventListener("change", () => {
+    if (parsed) selectAutomatic();
   });
 })();

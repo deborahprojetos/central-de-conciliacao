@@ -19,3 +19,25 @@ h3{font-size:14px;margin:20px 0 8px}.chain{display:flex;gap:8px;align-items:cent
 .selected-grid .residual{background:#eef3ff;border:2px solid #2157d5}.selected-grid .residual strong{font-size:18px;color:#173f9f}
 @media(max-width:850px){.flow-metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.flow-metrics{grid-template-columns:1fr}}
+
+.allocation-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.allocation-summary>div{padding:13px;border:1px solid #dfe5ec;border-radius:10px;background:#fbfcfe}
+.allocation-summary span{display:block;color:#667085;font-size:12px}
+.allocation-summary strong{display:block;margin-top:4px;font-size:16px}
+.allocation-status{margin-top:12px;padding:12px;border-radius:10px;background:#f1f4f8;color:#667085;font-size:13px;font-weight:700}
+.allocation-status.ok{background:#eef8f2;color:#146c43}
+.allocation-status.error{background:#fff0f0;color:#a61b1b}
+.allocation-tools{display:flex;gap:10px;margin:12px 0;align-items:center}
+.allocation-search{flex:1;border:1px solid #cfd8e3;border-radius:10px;padding:10px 12px;font-size:14px}
+.allocation-help{margin:12px 0;padding:12px;background:#eef3ff;border-radius:10px}
+.allocation-help strong,.allocation-help span{display:block}
+.allocation-help span{color:#667085;font-size:13px;margin-top:3px}
+.table-wrap{width:100%;overflow:auto;border:1px solid #dfe5ec;border-radius:10px}
+.allocation-table{width:100%;border-collapse:collapse;min-width:700px;background:#fff}
+.allocation-table th,.allocation-table td{padding:9px 10px;border-bottom:1px solid #edf0f4;text-align:left;font-size:12px;white-space:nowrap}
+.allocation-table th{background:#f7f9fc;color:#667085;font-weight:800}
+.allocation-table td.money{text-align:right;font-variant-numeric:tabular-nums}
+.allocation-table td.residual{font-weight:800;color:#173f9f}
+.allocation-table input[type=checkbox]{width:16px;height:16px;accent-color:#2157d5}
+@media(max-width:850px){.allocation-summary{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.allocation-summary{grid-template-columns:1fr}.allocation-tools{flex-direction:column;align-items:stretch}}

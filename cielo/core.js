@@ -231,27 +231,85 @@
     if (feeCents <= 0) return [];
     return parsed.rows
       .filter(r =>
-        cents(r.valorLiquido) > feeCents &&
+        cents(r.valorLiquido) > 0 &&
         r.autorizacao &&
         r.nsu &&
         r.parcelaAtual >= 1
       )
-      .sort((a,b)=>a.dataCredito-b.dataCredito || a.sourceRow-b.sourceRow);
+      .sort((a,b)=>
+        cents(b.valorLiquido)-cents(a.valorLiquido) ||
+        a.dataCredito-b.dataCredito ||
+        a.sourceRow-b.sourceRow
+      );
   }
 
-  function processingPlan(parsed, anticipationFee, selected) {
-    const s = summarize(parsed);
+  // A Nota de Débito pode ser maior que qualquer recebível individual.
+  // Nesse caso ela é distribuída em vários títulos, começando pelos maiores.
+  function buildNoteAllocation(parsed, anticipationFee, selectedRows = null) {
     const feeCents = cents(anticipationFee);
     if (feeCents <= 0) throw new Error("Informe a Nota de Débito.");
-    if (!selected) throw new Error("Selecione o título que receberá a Nota de Débito.");
-    const originalCents = cents(selected.valorLiquido);
-    if (originalCents <= feeCents) throw new Error("O título escolhido precisa ter valor maior que a Nota de Débito.");
+
+    const all = eligibleNoteCandidates(parsed, anticipationFee);
+    const selectedSet = selectedRows && selectedRows.length
+      ? new Set(selectedRows.map(r => String(r.sourceRow)))
+      : null;
+
+    const candidates = selectedSet
+      ? all.filter(r => selectedSet.has(String(r.sourceRow)))
+      : all;
+
+    let remaining = feeCents;
+    const allocations = [];
+
+    for (const r of candidates) {
+      if (remaining <= 0) break;
+      const original = cents(r.valorLiquido);
+      const applied = Math.min(original, remaining);
+      if (applied <= 0) continue;
+
+      allocations.push({
+        sourceRow: r.sourceRow,
+        row: r,
+        originalCents: original,
+        noteCents: applied,
+        residualCents: original - applied
+      });
+      remaining -= applied;
+    }
+
+    if (remaining > 0) {
+      throw new Error(
+        "Os títulos selecionados não são suficientes para alocar " +
+        moneyBR(feeCents / 100) +
+        ". Faltam " + moneyBR(remaining / 100) + "."
+      );
+    }
+
+    return {
+      noteCents: feeCents,
+      allocations,
+      remainingCents: 0,
+      selectedTotalCents: allocations.reduce((s,a)=>s+a.originalCents,0)
+    };
+  }
+
+  function suggestedNoteAllocation(parsed, anticipationFee) {
+    return buildNoteAllocation(parsed, anticipationFee, null);
+  }
+
+  function processingPlan(parsed, anticipationFee, selectedRows = null) {
+    const s = summarize(parsed);
+    const allocation = selectedRows && selectedRows.length
+      ? buildNoteAllocation(parsed, anticipationFee, selectedRows)
+      : suggestedNoteAllocation(parsed, anticipationFee);
+
     return {
       totalBaixa: s.net,
-      notaDebito: fromCents(feeCents),
-      cielo04: fromCents(cents(s.net) - feeCents),
-      tituloOriginal: selected.valorLiquido,
-      saldoTituloCielo04: fromCents(originalCents - feeCents)
+      notaDebito: fromCents(allocation.noteCents),
+      cielo04: fromCents(cents(s.net) - allocation.noteCents),
+      allocations: allocation.allocations,
+      selectedCount: allocation.allocations.length,
+      selectedTotal: fromCents(allocation.selectedTotalCents)
     };
   }
 
@@ -369,14 +427,18 @@
     return s;
   }
 
-  function buildCielo04(parsed, selected, anticipationFee) {
-    const plan = processingPlan(parsed, anticipationFee, selected);
-    const selectedRow = selected.sourceRow;
-    const residualCents = cents(plan.saldoTituloCielo04);
+  function buildCielo04(parsed, anticipationFee, selectedRows = null) {
+    const plan = processingPlan(parsed, anticipationFee, selectedRows);
+    const allocationByRow = new Map(
+      plan.allocations.map(a => [String(a.sourceRow), a.residualCents])
+    );
     const lines = [makeHeader(parsed)];
 
     parsed.rows.forEach((r,i)=>{
-      const override = r.sourceRow === selectedRow ? residualCents : null;
+      const key = String(r.sourceRow);
+      const override = allocationByRow.has(key)
+        ? allocationByRow.get(key)
+        : null;
       lines.push(makeD(r, i+1, override));
       lines.push(makeE(r, i+1, override));
     });
@@ -392,55 +454,56 @@
     return lines.join("\r\n") + "\r\n";
   }
 
-  function buildControlReport(parsed, anticipationFee, selected) {
+  function buildControlReport(parsed, anticipationFee, selectedRows = null) {
     const s = summarize(parsed);
-    const plan = processingPlan(parsed, anticipationFee, selected);
+    const plan = processingPlan(parsed, anticipationFee, selectedRows);
     const lines = [
       "CONTROLE CIELO → DEALER",
       "",
       "TOTAL A BAIXAR NO DEALER: " + moneyBR(plan.totalBaixa),
       "",
       "ETAPA 1 - BAIXA MANUAL DA NOTA DE DÉBITO",
-      "Nota de Débito: " + moneyBR(plan.notaDebito),
-      "Título escolhido:",
-      "  Data de pagamento: " + dateBR(selected.dataCredito),
-      "  Data da venda: " + dateBR(selected.dataVenda),
-      "  Estabelecimento: " + selected.estabelecimento,
-      "  Autorização: " + selected.autorizacao,
-      "  NSU: " + selected.nsu,
-      "  Parcela: " + selected.parcelaAtual + "/" + selected.totalParcelas,
-      "  Valor original do título: " + moneyBR(plan.tituloOriginal),
-      "  Saldo após Nota de Débito: " + moneyBR(plan.saldoTituloCielo04),
+      "Nota de Débito total: " + moneyBR(plan.notaDebito),
+      "Quantidade de títulos utilizados: " + plan.selectedCount,
+      ""
+    ];
+
+    lines.push("ALOCAÇÃO DA NOTA DE DÉBITO:");
+    plan.allocations.forEach((a, idx)=>{
+      const r = a.row;
+      lines.push(
+        (idx+1) + ". " +
+        dateBR(r.dataCredito) +
+        " | Aut. " + r.autorizacao +
+        " | NSU " + r.nsu +
+        " | Parcela " + r.parcelaAtual + "/" + r.totalParcelas +
+        " | Original " + moneyBR(fromCents(a.originalCents)) +
+        " | ND aplicada " + moneyBR(fromCents(a.noteCents)) +
+        " | Saldo CIELO04 " + moneyBR(fromCents(a.residualCents))
+      );
+    });
+
+    lines.push(
       "",
-      "IMPORTANTE: faça a baixa manual da Nota de Débito ANTES de importar o CIELO04.",
+      "IMPORTANTE: faça as baixas manuais da Nota de Débito nos títulos acima ANTES de importar o CIELO04.",
       "",
       "ETAPA 2 - IMPORTAÇÃO CIELO04",
       "Total do CIELO04: " + moneyBR(plan.cielo04),
-      "O título acima entra no CIELO04 somente pelo saldo de " + moneyBR(plan.saldoTituloCielo04) + ".",
+      "Os títulos utilizados na Nota de Débito entram no CIELO04 somente pelo saldo residual.",
       "Os demais títulos permanecem com seus valores líquidos integrais.",
       "",
       "CONFERÊNCIA",
-      moneyBR(plan.notaDebito) + " (Nota de Débito manual) + " + moneyBR(plan.cielo04) + " (CIELO04) = " + moneyBR(plan.totalBaixa),
+      moneyBR(plan.notaDebito) + " (Nota de Débito manual) + " +
+      moneyBR(plan.cielo04) + " (CIELO04) = " + moneyBR(plan.totalBaixa),
       "",
       "Total bruto da planilha: " + moneyBR(s.gross),
       "Taxa administrativa Cielo: " + moneyBR(s.fee),
       "Total líquido original: " + moneyBR(s.net),
       ""
-    ];
-
-    lines.push("CADEIA DO RECEBÍVEL ESCOLHIDO:");
-    transactionChain(parsed, selected).forEach(r=>{
-      const isSelected = r.sourceRow === selected.sourceRow;
-      lines.push(
-        "- " + dateBR(r.dataCredito) +
-        " | parcela " + r.parcelaAtual + "/" + r.totalParcelas +
-        " | original " + moneyBR(r.valorLiquido) +
-        (isSelected ? " | CIELO04 " + moneyBR(plan.saldoTituloCielo04) + " | NOTA DE DÉBITO NESTE TÍTULO" : "")
-      );
-    });
+    );
 
     if (parsed.warnings.length) {
-      lines.push("", "AVISOS:");
+      lines.push("AVISOS:");
       parsed.warnings.forEach(w=>lines.push("- " + w));
     }
     return lines.join("\r\n");
@@ -448,7 +511,7 @@
 
   global.CieloCore = {
     REQUIRED, CONFIG, parseRows, summarize, moneyBR, dateBR,
-    eligibleNoteCandidates, transactionChain, processingPlan,
-    buildCielo04, buildControlReport
+    eligibleNoteCandidates, suggestedNoteAllocation, buildNoteAllocation,
+    transactionChain, processingPlan, buildCielo04, buildControlReport
   };
 })(typeof window !== "undefined" ? window : globalThis);
