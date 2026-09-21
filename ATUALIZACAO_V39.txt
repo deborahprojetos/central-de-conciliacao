@@ -1,9 +1,0 @@
-V39 — Correção real do motor Itaú × Dealer e paleta azul
-- O motor cruza soma integral de títulos do mesmo credor e valores individuais exatos; não força conciliação por valores diferentes.
-- Valor repetido, vários candidatos e credor divergente recebem status Revisar.
-- As duas correções da análise anterior (MR Despachante e Natanael) recebem Revisar em vez de confirmação automática.
-- CPF/CNPJ Itaú não é tratado como prova de identidade quando o Dealer não o fornece.
-- Inclui código do título Dealer e parcela na lista legível; pagamentos sem vínculo mostram subtotal do credor quando disponível.
-- Paleta roxa da aplicação MVP substituída por azul #1d4f91, azul-marinho #080847 e ciano #16c8f4.
-- Verificação com 74 pagamentos e 137 títulos do caso original: 37 conciliados, 30 para revisar, 7 não localizados; dois casos que haviam sido indevidamente confirmados foram corrigidos.
-- Outras três aplicações e tela inicial preservadas.

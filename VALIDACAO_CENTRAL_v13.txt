@@ -1,8 +1,0 @@
-V18 - MVP cruzamento inteligente Itaú x Dealer
-- 1x1 por valor
-- 1xN por nome+valor e fallback valor+data
-- Nx1 por nome+valor e fallback valor+data
-- divergência separada de não localizado
-- duplicidades 2x2 podem ser conciliadas individualmente
-- não exige número do título para agrupamentos
-- agrupamentos exibem composição dos títulos do Dealer

@@ -1,2 +1,0 @@
-V38 — Apresentação da análise Itaú × Dealer
-A tela MVP agora separa a análise em: (1) Consta no Itaú e Dealer, (2) Revisar o vínculo, (3) Itaú sem correspondência. Cada pagamento mostra valor, credor e título(s) Dealer, justificativa, e CPF/CNPJ Itaú quando fornecido. Nomes divergentes e valor igual sem vínculo seguro aparecem em Revisar. Títulos sem vínculo ficam em lista própria recolhível e a tabela técnica original permanece acessível. Inclui correção v37 do parser e atualizações v36, sem alterar as outras três aplicações.

@@ -1,6 +1,0 @@
-CENTRAL DE CONCILIAÇÃO — V22
-
-Alteração restrita ao módulo /itau-mvp/.
-/itau-dealer/, /cielo/ e /difal/ permanecem sem alteração em relação à V21.
-
-V22 revalida o MVP Itaú × Dealer com o conjunto real de 20/08/2026, corrige a leitura de créditos do Itaú e refina o tratamento de agrupamentos, divergências e ANALISAR.
