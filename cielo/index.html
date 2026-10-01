@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cielo → Dealer</title>
 <link rel="stylesheet" href="styles.css?v=45">
+<link rel="stylesheet" href="../ui-premium.css">
 </head>
 <body>
 <header>
@@ -12,7 +13,7 @@
     <div class="logo">C</div>
     <div><strong>Cielo → Dealer</strong><span>Preparação e conferência CIELO04</span></div>
   </div>
-  <div class="badge">Processamento local</div>
+  <div class="top-actions"><div class="badge">Processamento local</div><nav class="central-nav" aria-label="Navegação da Central"><a href="../">← Central</a><a href="/__logout">Sair</a></nav></div>
 </header>
 
 <main>
@@ -100,7 +101,7 @@
         </table>
       </div>
 
-      <h3>Como a Nota de Débito será distribuída</h3>
+      <h3>Detalhamento da distribuição</h3>
       <div class="table-wrap">
         <table class="allocation-table detail">
           <thead>
@@ -118,15 +119,17 @@
         </table>
       </div>
 
-      <div class="mapping">
-        CIELO04: posições 18–19 = parcela atual | posições 20–21 = total de parcelas.
-        A Nota de Débito é baixada manualmente nos títulos selecionados antes da importação.
-      </div>
-
-      <div class="rule">
-        <strong>Regra aplicada</strong>
-        <span>Se a Nota de Débito for maior que um título, a aplicação utiliza vários títulos. O valor da baixa manual é distribuído até completar a Nota de Débito, e o CIELO04 recebe apenas o saldo residual de cada título utilizado.</span>
-      </div>
+      <details class="explain-details">
+        <summary>Regras e detalhes do arquivo</summary>
+        <div class="mapping">
+          CIELO04: posições 18–19 = parcela atual | posições 20–21 = total de parcelas.
+          A Nota de Débito é baixada manualmente nos títulos selecionados antes da importação.
+        </div>
+        <div class="rule">
+          <strong>Regra aplicada</strong>
+          <span>Se a Nota de Débito for maior que um título, a aplicação utiliza vários títulos. O valor da baixa manual é distribuído até completar a Nota de Débito, e o CIELO04 recebe apenas o saldo residual de cada título utilizado.</span>
+        </div>
+      </details>
     </section>
 
     <section class="card">
@@ -150,7 +153,7 @@
   </div>
 </main>
 
-<footer>Configuração validada para o fluxo France · CIELO V45</footer>
+<footer>Gerador CIELO04 · versão 45</footer>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="core.js?v=45"></script>
@@ -159,16 +162,7 @@
 
 
 
-<div style="position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;gap:8px;align-items:center">
-  <a href="../" aria-label="Voltar para a Central Financeira"
-     style="text-decoration:none;background:#172033;color:#fff;padding:10px 14px;border-radius:999px;
-            font:600 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;
-            box-shadow:0 8px 22px rgba(0,0,0,.18)">← Central Financeira</a>
-  <a href="/__logout" aria-label="Sair"
-     style="text-decoration:none;background:#fff;color:#9b1c1c;border:1px solid #e4c6c6;padding:10px 14px;border-radius:999px;
-            font:700 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;
-            box-shadow:0 8px 22px rgba(0,0,0,.10)">Sair</a>
-</div>
+
 
 </body>
 </html>
