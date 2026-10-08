@@ -1,6 +1,0 @@
-CENTRAL V20 — correção de separação de módulos
-
-A Central continua com 4 aplicações.
-O módulo ITAÚ × DEALER · MVP foi restaurado e é o módulo que recebe o motor de cruzamento inteligente.
-O módulo ITAÚ × DEALER original permanece separado e preservado.
-DIFAL e CIELO permanecem preservados.

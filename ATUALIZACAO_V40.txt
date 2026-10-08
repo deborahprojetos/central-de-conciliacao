@@ -1,8 +1,0 @@
-V40 — Motivos explicativos gerados após processar Itaú × Dealer
-- Cada resultado apresenta uma mensagem específica baseada no vínculo e nos títulos carregados, sem textos estáticos vinculados a empresas da amostra.
-- Segundo débito de mesmo valor sem segundo título: motivo explícito de ausência.
-- Pagamento para entidade Banco sem credor Banco correspondente: não atribui títulos da entidade comercial de nome semelhante e explica isso.
-- Pagamento sem fechamento: mostra soma dos títulos do credor e diferença monetária.
-- Valor igual com nome diferente, soma com beneficiário/estado divergente e valores repetidos: detalhes claros na lista de revisão.
-- Confirmação apenas quando identidade nominal e valor fecham; mensagens são exibidas na seção Por quê.
-- Teste com 74 pagamentos e 137 títulos reais: 37 confirmados, 30 para revisar e 7 sem correspondência. Cores azuis da v39 preservadas; outras aplicações não alteradas.

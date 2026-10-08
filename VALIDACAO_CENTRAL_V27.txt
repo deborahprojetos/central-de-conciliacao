@@ -1,5 +1,0 @@
-Central V27
-- Alterado somente o módulo itau-mvp.
-- Corrigida a leitura de valores do Itaú com uma casa decimal após vírgula.
-- Reprocessamento de regressão executado com 57 pagamentos Itaú e 65 movimentos Dealer do conjunto de 20/08/2026.
-- Demais módulos preservados da V26.
