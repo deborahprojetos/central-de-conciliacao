@@ -1,0 +1,47 @@
+CENTRAL DE CONCILIAÇÃO - VALIDAÇÃO V24
+Data: 26/08/2026
+
+Escopo alterado
+- Somente itau-mvp.
+- itau-dealer original, Cielo e DIFAL preservados.
+
+Correções críticas
+1. Dealer agora lê TituloPessoaNome como fornecedor, e não TituloEmpresaNome.
+2. TitDataMov/TitMovDataCaixa são lidos por cabeçalho específico; TituloDataVencto não é usado por engano.
+3. Trajetória completa e exclusiva: cada registro consumido sai das etapas seguintes.
+4. Ordem lógica: correspondência exata/entidade -> agrupamentos -> relações candidatas (Volkswagen ↔ LM) -> encontrado parcial -> valor exato residual -> analisar ambiguidade -> não encontrado.
+5. Valor exato residual único = CONCILIADO VALOR.
+6. Valor repetido/ambíguo = ANALISAR CONCILIAÇÃO.
+7. Resultados ordenados por status: CONCILIADO, CONCILIADO AGRUPADO, CONCILIADO VALOR, ANALISAR CONCILIAÇÃO, ENCONTRADO PARCIAL, NÃO ENCONTRADO.
+8. Agrupamentos continuam em uma única linha, com quantidade 1×N / N×1 / N×N.
+
+Regressão com o conjunto real conhecido de 20/08/2026
+- 22 CONCILIADO
+- 15 CONCILIADO VALOR
+- 7 CONCILIADO AGRUPADO
+- 1 ENCONTRADO PARCIAL
+- 10 Itaú sem contraparte, apresentados como NÃO ENCONTRADO
+- 1 Dealer sem contraparte, apresentado como NÃO ENCONTRADO
+- Total: 56 conclusões/linhas na página única
+
+Agrupamentos críticos validados
+- BANCO VOLKSWAGEN 1.034.212,00 = 12 LM = 1.034.212,00 -> CONCILIADO AGRUPADO 1×12
+- BANCO VOLKSWAGEN 247.755,28 = 98.017,74 + 149.737,54 -> CONCILIADO AGRUPADO 1×2
+- DARF 270.322,02 = 238.430,78 + 31.891,24 -> CONCILIADO AGRUPADO 1×2
+- DARF 3.838,54 = 3.148,07 + 513,26 + 177,21 -> CONCILIADO AGRUPADO 1×3
+- DARF 3.202,75 = 1.080,16 + 1.853,46 + 269,13 -> CONCILIADO AGRUPADO 1×3
+- Ouro Verde 238,38 + 238,38 = 238,38 + 238,38 -> CONCILIADO AGRUPADO 2×2
+- IPOG 204,63 + 204,63 = 204,63 + 204,63 -> CONCILIADO AGRUPADO 2×2
+
+Parcial crítico
+- DEALERUP Itaú 83,75 x Dealer 78,60 -> ENCONTRADO PARCIAL, diferença 5,15.
+
+Resíduo Dealer após trajetória completa
+- DEALERUP 78,60 é consumido pelo ENCONTRADO PARCIAL acima.
+- AFONSO LAMBERTO VAN LIESHOUT 3.791,22 permanece NÃO ENCONTRADO.
+
+Testes técnicos
+- node --check app.js: OK
+- node --check core.js: OK
+- parser de cabeçalhos reais: OK (TituloPessoaNome = LM; data = 20/08/2026; valor = 63.861,00)
+- regressão do motor: OK
