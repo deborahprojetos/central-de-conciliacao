@@ -168,6 +168,9 @@
           autorizacao: text(raw["Código da autorização"]),
           nsu: text(raw["NSU/DOC"]),
           parcelaRaw: text(raw["Número da parcela"]),
+          totalParcelasRaw: text(raw["Quantidade total de parcelas"] || ""),
+          formaPagamento: text(raw["Forma de pagamento"] || ""),
+          bandeira: text(raw["Bandeira"] || ""),
           valorBruto: moneyNumber(raw["Valor bruto"]),
           taxaAdm: moneyNumber(raw["Taxa/tarifa"]),
           valorLiquido: moneyNumber(raw["Valor líquido"]),
@@ -181,6 +184,19 @@
     if (!rows.length) throw new Error("Nenhum título válido foi encontrado.");
 
     computeParcelTotals(rows);
+
+    if (!headers.includes("Bandeira")) {
+      warnings.push("A planilha não traz a coluna “Bandeira”. Todos os lançamentos foram gravados com o código 001 (Visa).");
+    } else {
+      const unknown = [...new Set(rows.filter(r => r.bandeira && !BRAND_CODES[brandKey(r.bandeira)]).map(r => r.bandeira))];
+      if (unknown.length) {
+        warnings.push("Bandeira sem código confirmado no CIELO04: " + unknown.join(", ") + ". Esses lançamentos foram gravados com 001; confira antes de importar.");
+      }
+    }
+
+    if (!headers.includes("Quantidade total de parcelas")) {
+      warnings.push("A planilha não traz a coluna “Quantidade total de parcelas”. O total de parcelas foi estimado pela maior parcela presente na planilha; confira as vendas parceladas antes de importar.");
+    }
 
     if (false) {
       warnings.push(
@@ -209,8 +225,17 @@
     });
 
     for (const arr of groups.values()) {
-      const total = Math.max(1, ...arr.map(r => r.parcelaAtual));
-      arr.forEach(r => r.totalParcelas = Math.max(r.parcelaAtual, total));
+      const inferred = Math.max(1, ...arr.map(r => r.parcelaAtual));
+      arr.forEach(r => {
+        // V48.2: usa a coluna "Quantidade total de parcelas" da Cielo quando existir.
+        // Só estima pela maior parcela presente quando a coluna não vier na planilha.
+        const informed = parcelNumber(r.totalParcelasRaw);
+        r.totalParcelas = r.totalParcelasRaw ? Math.max(r.parcelaAtual, informed) : Math.max(r.parcelaAtual, inferred);
+        // Venda parcelada: tem número de parcela e (total > 1 ou forma "parcelado").
+        r.parcelado = Boolean(r.parcelaRaw) && (
+          r.totalParcelas > 1 || r.parcelaAtual > 1 || /parcelad/i.test(r.formaPagamento || "")
+        );
+      });
     }
   }
 
@@ -346,8 +371,21 @@
       .sort((a,b)=>a.parcelaAtual-b.parcelaAtual || a.dataCredito-b.dataCredito);
   }
 
+  // V48.2: no CIELO04 da Cielo toda venda parcelada é tipo 03, inclusive a parcela 01.
+  // Antes a parcela 01 saía como 02 (crédito à vista).
+  // V48.3: código da bandeira, confirmado no CIELO04 da Cielo
+  // (registro D posições 54-56 e registro E posições 12-14).
+  const BRAND_CODES = { visa: "001", mastercard: "002", master: "002", elo: "007" };
+  const DEFAULT_BRAND = "001";
+  function brandKey(name) {
+    return String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+  function brandCode(r) {
+    return BRAND_CODES[brandKey(r.bandeira)] || DEFAULT_BRAND;
+  }
+
   function typeCode(r) {
-    return (cents(r.valorBruto) <= 0 || r.parcelaAtual <= 1) ? "02" : "03";
+    return (cents(r.valorBruto) <= 0 || !r.parcelado) ? "02" : "03";
   }
 
   function makeD(r, seq, liquidOverrideCents = null, settlementDate = null) {
@@ -358,6 +396,7 @@
     const liquidCents = liquidOverrideCents === null ? cents(r.valorLiquido) : liquidOverrideCents;
 
     s = replaceRange(s, 1,11, est);
+    s = replaceRange(s, 53,56, brandCode(r));
     s = replaceRange(s, 59,69, est);
     s = replaceRange(s, 71,85, signed14(cents(r.valorBruto)));
     s = replaceRange(s, 85,99, fee14(cents(r.taxaAdm)));
@@ -390,8 +429,11 @@
     // 18-19 (1-based) = parcela atual  -> índices JS 17:19
     // 20-21 (1-based) = total parcelas -> índices JS 19:21
     s = replaceRange(s, 1,11, est);
-    s = replaceRange(s, 17,19, String(r.parcelaAtual).padStart(2,"0"));
-    s = replaceRange(s, 19,21, String(r.totalParcelas).padStart(2,"0"));
+    s = replaceRange(s, 11,14, brandCode(r));
+    // V48.2: venda sem parcela (à vista, valor cedido, cancelamento, aluguel) = 00/00, como no CIELO04 da Cielo.
+    const parcelado = type === "03";
+    s = replaceRange(s, 17,19, parcelado ? String(r.parcelaAtual).padStart(2,"0") : "00");
+    s = replaceRange(s, 19,21, parcelado ? String(r.totalParcelas).padStart(2,"0") : "00");
     s = replaceRange(s, 21,27, auth);
     s = replaceRange(s, 27,29, type);
     s = replaceRange(s, 29,39, est);

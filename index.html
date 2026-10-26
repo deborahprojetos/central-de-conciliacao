@@ -3,88 +3,110 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Central de aplicações financeiras para conciliação e preparação de arquivos.">
-  <title>Central Financeira</title>
-  <link rel="stylesheet" href="central.css">
+  <meta name="description" content="Central Financeira: painel de conciliações, pendências e geração de arquivos.">
+  <meta name="theme-color" content="#111d3b">
+  <title>Painel · Central Financeira</title>
+  <link rel="stylesheet" href="central.css?v=2.0">
+  <link rel="stylesheet" href="shell.css?v=2.0">
+  <script src="shell.js?v=2.0"></script>
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="mark">CF</div>
+<body class="dash">
+  <main class="dash-main" id="conteudo">
+    <header class="dash-head">
       <div>
-        <strong>Central Financeira</strong>
-      <span>Aplicações financeiras</span>
+        <h1>Painel</h1>
+        <p class="dash-sub">Resultado das últimas análises feitas neste navegador.</p>
       </div>
+      <div class="dash-head-actions">
+        <span class="dash-today" id="today">—</span>
+        <button type="button" class="dash-btn" id="refreshBtn">Atualizar</button>
+      </div>
+    </header>
+
+    <div id="emptyState" class="dash-empty" hidden>
+      <h2>Nenhuma análise registrada ainda</h2>
+      <p>Os indicadores aparecem aqui assim que você concluir uma conferência em qualquer aplicação. Comece por uma delas:</p>
+      <div class="dash-empty-links" id="emptyLinks"></div>
     </div>
-    <div class="top-actions"><div class="status">4 aplicações</div><a href="/__logout" class="logout-link">Sair</a></div>
-  </header>
 
-  <main class="page">
-    <section class="hero">
-      <p class="eyebrow">CENTRAL FINANCEIRA</p>
-      <h1>Operações financeiras, em um só lugar.</h1>
-      <p class="lead">
-        Selecione a ferramenta para iniciar uma conferência ou preparar um arquivo.
-      </p>
+    <section class="kpis" aria-label="Indicadores principais">
+      <article class="kpi-balance">
+        <div class="kpi-balance-top">
+          <div>
+            <h2>Taxa de conciliação</h2>
+            <p class="kpi-hint">Itens conciliados sobre o total conferido</p>
+          </div>
+          <strong class="kpi-rate" id="kRate">—</strong>
+        </div>
+        <div class="ledger" role="img" id="kLedger" aria-label="Sem dados">
+          <span class="ledger-ok" id="kLedgerOk"></span><span class="ledger-pend" id="kLedgerPend"></span>
+        </div>
+        <div class="ledger-legend">
+          <span><i class="sw sw-ok"></i><b id="kOk">0</b> conciliados</span>
+          <span><i class="sw sw-pend"></i><b id="kPend">0</b> pendências</span>
+        </div>
+      </article>
+
+      <article class="kpi-card">
+        <h2>Pendências em aberto</h2>
+        <strong id="kPendBig">0</strong>
+        <p id="kPendSub">Nenhuma pendência registrada</p>
+      </article>
+      <article class="kpi-card">
+        <h2>Volume conferido</h2>
+        <strong id="kVolume">R$ 0,00</strong>
+        <p id="kVolumeSub">Última análise de cada aplicação e período DIFAL</p>
+      </article>
+      <article class="kpi-card">
+        <h2>Lotes CIELO04 gerados</h2>
+        <strong id="kCielo">0</strong>
+        <p id="kCieloSub">Nenhum arquivo gerado</p>
+      </article>
     </section>
 
-    <p class="section-label">Suas aplicações</p>
-    <section class="grid" aria-label="Aplicações disponíveis">
-      <a class="app-card" href="cielo/?v=45">
-        <div class="icon cielo">C04</div>
-        <div class="content">
-          <div class="tag">ARQUIVOS · CIELO</div>
-          <h2>Gerador CIELO04</h2>
-          <p>
-            Confere parcelas e saldos da antecipação e gera o CIELO04 para importar no Dealer.
-          </p>
+    <div class="dash-grid">
+      <section class="panel-x modules" aria-labelledby="modulesTitle">
+        <div class="panel-x-head">
+          <h2 id="modulesTitle">Situação por aplicação</h2>
+          <p>Proporção entre o que fechou e o que ainda precisa de tratamento.</p>
         </div>
-        <div class="open" aria-hidden="true">→</div>
-      </a>
+        <div id="moduleRows" class="module-rows"></div>
+      </section>
 
-      <a class="app-card" href="difal/">
-        <div class="icon difal">DF</div>
-        <div class="content">
-          <div class="tag">CONCILIAÇÃO · BANCO UTIL</div>
-          <h2>Conciliação Banco Util × Dealer</h2>
-          <p>
-            Compara os pagamentos do Banco Util com os movimentos do Dealer, por data e documento.
-          </p>
+      <aside class="side-col">
+        <section class="panel-x" aria-labelledby="pendTitle">
+          <div class="panel-x-head"><h2 id="pendTitle">Pendências a tratar</h2></div>
+          <ul id="pendList" class="pend-list"></ul>
+        </section>
+        <section class="panel-x" aria-labelledby="actTitle">
+          <div class="panel-x-head"><h2 id="actTitle">Atividade recente</h2></div>
+          <ol id="activity" class="activity"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel-x difal-period" id="difalPeriod" aria-labelledby="difalTitle" hidden>
+      <div class="panel-x-head panel-x-head-row">
+        <div>
+          <h2 id="difalTitle">Período DIFAL</h2>
+          <p id="difalSub">—</p>
         </div>
-        <div class="open" aria-hidden="true">→</div>
-      </a>
-
-      <a class="app-card" href="itau-mvp/">
-        <div class="icon itau">I</div>
-        <div class="content">
-          <div class="tag">ITAÚ × DEALER · PAGAMENTOS</div>
-          <h2>Análise de pagamentos</h2>
-          <p>Compare pagamentos por favorecido, documento e valor; confira agrupamentos e vínculos que precisam de revisão.</p>
-        </div>
-        <div class="open" aria-hidden="true">→</div>
-      </a>
-
-      <a class="app-card" href="itau-dealer/">
-        <div class="icon itau">I</div>
-        <div class="content">
-          <div class="tag">ITAÚ × DEALER · COMPLETA</div>
-          <h2>Conciliação de recebimentos e pagamentos</h2>
-          <p>
-            Compara movimentos dos dois sistemas. Aceita Excel, HTML e PDF, com OCR para documentos digitalizados.</p>
-        </div>
-        <div class="open" aria-hidden="true">→</div>
-      </a>
-    </section>
-
-    <section class="info">
-      <div class="info-mark" aria-hidden="true">i</div>
-      <div>
-        <strong>Fluxos independentes</strong>
-        <span>Cada aplicação mantém seus próprios dados e processamento. Confira os resultados antes de importar ou registrar baixas.</span>
+        <a class="dash-link" href="difal/">Abrir DIFAL</a>
+      </div>
+      <div class="day-strip" id="dayStrip"></div>
+      <div class="day-legend">
+        <span><i class="sw sw-ok"></i>Sem pendências</span>
+        <span><i class="sw sw-pend"></i>Com pendências</span>
+        <span><i class="sw sw-none"></i>Ainda não analisada</span>
       </div>
     </section>
+
+    <footer class="dash-foot">
+      <p>Os arquivos são lidos e processados no navegador. Os indicadores ficam guardados apenas neste navegador; em outro computador o painel começa vazio.</p>
+      <button type="button" class="dash-btn dash-btn-quiet" id="clearIndicators">Limpar indicadores do painel</button>
+    </footer>
   </main>
 
-  <footer>Central Financeira · versão 1.7</footer>
+  <script src="dashboard.js?v=2.0"></script>
 </body>
 </html>

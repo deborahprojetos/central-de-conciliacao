@@ -1,0 +1,58 @@
+V48 - CENTRAL FINANCEIRA 2.0 · MENU LATERAL E PAINEL DE INDICADORES
+
+O que mudou
+- Página inicial (index.html) virou um painel com indicadores:
+  taxa de conciliação, pendências em aberto, volume conferido, lotes CIELO04 gerados,
+  situação por aplicação, pendências a tratar, atividade recente e período DIFAL por data.
+- Menu lateral único em todas as páginas (painel + 4 aplicações), com selo de pendências,
+  opção de recolher (desktop) e gaveta com botão de menu (celular/tablet).
+- O link "← Central" das aplicações foi substituído pelo menu lateral. "Sair" fica no rodapé do menu.
+
+Arquivos novos
+- shell.js       menu lateral + registro dos resultados de cada aplicação
+- shell.css      estilos do menu lateral
+- dashboard.js   cálculo e exibição dos indicadores do painel
+- central.css    reescrito para o painel
+
+Arquivos alterados
+- index.html (raiz)            novo painel
+- cielo/index.html, difal/index.html, itau-mvp/index.html, itau-dealer/index.html
+  apenas 2 linhas no <head>: shell.css e shell.js. Nenhum app.js/core.js foi alterado.
+
+De onde vêm os indicadores
+- DIFAL: lido do histórico que a própria aplicação já salva no navegador.
+- Itaú pagamentos e Itaú completa: o shell lê os cartões de resultado ao final de cada análise.
+- CIELO04: o shell lê a conferência e conta cada clique em "Gerar CIELO04.TXT".
+- Tudo fica no localStorage deste navegador (chaves "cf:*"). Nada é enviado a servidor.
+  Em outro computador ou navegador o painel começa vazio.
+
+Publicação (Cloudflare Pages via GitHub)
+- Substitua os arquivos do repositório por este pacote e faça o commit.
+- _headers não precisou mudar: os scripts novos são arquivos próprios (sem script inline).
+
+V48.1 - ITAÚ × DEALER · ANÁLISE DE PAGAMENTOS
+- O quadro "Pagamento no Itaú sem correspondência no Dealer" passa a ser o primeiro da análise,
+  seguido de "Consta no Itaú e no Dealer" e "Valor encontrado: revisar o vínculo".
+- Cache-busting do itau-mvp/app.js atualizado (?v=48.1).
+
+V48.2 - CIELO04 · CAMPOS DE PARCELA (registro E)
+Comparação com o CIELO04 original da Cielo (CIELO04D_0002398818_20261022...):
+- Posições 18-19 (parcela atual) e 20-21 (total) já estavam no lugar certo.
+- Corrigido: a parcela 01 de venda parcelada saía com tipo 02 (posições 28-29, 556-557
+  e tipo do registro D na 150-151). Agora sai 03, como no arquivo da Cielo.
+- Corrigido: lançamentos sem parcela (crédito à vista, valor cedido, cancelamento,
+  aluguel) saíam como 01/01. Agora saem 00/00, como no arquivo da Cielo.
+- O total de parcelas passa a vir da coluna "Quantidade total de parcelas" da planilha.
+  Se a coluna não existir, o total é estimado e a tela mostra um aviso.
+- Validado com Negocição_Recebiveis_Cielo_Detalhe_131026: 7.165 linhas,
+  0 fora da regra; nenhuma outra posição do arquivo mudou.
+- Cache-busting do módulo Cielo atualizado (?v=48.2).
+
+V48.3 - CIELO04 · BANDEIRA
+- Código da bandeira lido da coluna "Bandeira" da planilha:
+  Visa = 001, Mastercard = 002, Elo = 007 (códigos confirmados no CIELO04 da Cielo).
+- Gravado no registro E (posições 12-14) e no registro D (posições 54-56).
+- Bandeira fora dessa lista continua com 001 e a tela mostra um aviso para conferência.
+- Aluguel de máquina mantido como estava (tipo 02), por se tratar de antecipação.
+- Validado: 7.165 linhas com a bandeira correta; regra de parcela da V48.2 mantida.
+- Cache-busting do módulo Cielo atualizado (?v=48.3).

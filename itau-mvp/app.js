@@ -144,9 +144,9 @@ function renderReadableAnalysis(r){
    return `<tr><td><strong>${esc(x.itau.map(i=>i.name||i.payee).join(' + '))}</strong>${x.itau[0]?.taxId?`<small>CPF/CNPJ Itaú: ${esc(x.itau[0].taxId)}</small>`:''}</td><td class="money">${brl(value)}</td><td>${x.dealer.length?`<strong>${esc(names(x))}</strong><small>Título(s): ${esc(refs(x))} · Total ${brl(dealerValue)}</small>`:'—'}</td><td>${esc(reason)}</td></tr>`;
  }).join(''):'<tr><td colspan="4">Nenhum pagamento nesta situação.</td></tr>';
  const section=(title,desc,items,kind)=>`<section class="analysis-panel ${kind}"><header><h2>${title} <span>${items.length}</span></h2><p>${desc}</p></header><div class="analysis-scroll"><table><thead><tr><th>Pagamento no Itaú</th><th>Valor</th><th>Registro no Dealer</th><th>Por quê</th></tr></thead><tbody>${rows(items,kind)}</tbody></table></div></section>`;
- $('analysisSections').innerHTML=section('Consta no Itaú e no Dealer','Nome compatível e valor exato, individual ou somado.',confirmed,'confirmed')+
+ $('analysisSections').innerHTML=section('Pagamento no Itaú sem correspondência no Dealer','Nenhum título foi atribuído com segurança.',missing,'missing')+
+  section('Consta no Itaú e no Dealer','Nome compatível e valor exato, individual ou somado.',confirmed,'confirmed')+
   section('Valor encontrado: revisar o vínculo','Nome divergente, valor repetido, composição ambígua ou diferença de valor.',review,'review')+
-  section('Pagamento no Itaú sem correspondência no Dealer','Nenhum título foi atribuído com segurança.',missing,'missing')+
   `<details class="dealer-remaining"><summary>Ver ${dealerOnly.length} título(s) somente no Dealer</summary><div class="analysis-scroll"><table><thead><tr><th>Credor</th><th>Título</th><th>Valor</th></tr></thead><tbody>${dealerOnly.map(x=>x.dealer.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.title||d.parcel||d.note||d.id)}</td><td class="money">${brl(d.value)}</td></tr>`).join('')).join('')||'<tr><td colspan="3">Nenhum.</td></tr>'}</tbody></table></div></details>`+
   '<p class="analysis-caveat">O CNPJ vem do Itaú; sem CNPJ correspondente no Dealer, ele não confirma sozinho a identidade. “Revisar” é uma sugestão, não uma baixa confirmada.</p>';
 }
