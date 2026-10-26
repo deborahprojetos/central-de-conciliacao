@@ -1,5 +1,5 @@
 /*
-  Central Financeira · Shell compartilhado (v2.0)
+  Central Financeira · Shell compartilhado (v2.1)
   - Desenha o menu lateral em todas as páginas da Central.
   - Registra, neste navegador, um resumo dos resultados de cada aplicação
     para alimentar os indicadores do painel. Não altera a lógica das aplicações.
@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '2.0';
+  var VERSION = '2.1';
   var root = document.documentElement;
   root.classList.add('cf-shell');
 
@@ -234,6 +234,215 @@
     });
   }
 
+
+  /* ---------------- Arrastar e soltar / colar arquivos (v2.1) ----------------
+     Todo <input type="file"> da Central passa a aceitar:
+     - arrastar e soltar sobre o quadro do campo;
+     - Ctrl+V de um arquivo copiado no Explorer/Finder.
+     O arquivo é entregue ao próprio input e o evento "change" é disparado,
+     então cada aplicação processa exatamente como se o arquivo tivesse sido selecionado. */
+  var DROP_CONFIG = {
+    fileInput:     { zone: '.card',  label: 'Solte aqui a planilha da Cielo' },
+    bankFile:      { zone: '.panel', label: 'Solte aqui a planilha do Banco Util' },
+    restoreInput:  { zone: '.panel', label: 'Solte aqui o backup (.json) para restaurar', hint: false },
+    itauFile:      { zone: '.card',  label: 'Solte aqui o arquivo do Itaú (Excel, HTML ou PDF)' },
+    companionFile: { zone: '#companionBox', label: 'Solte aqui o arquivo ou a pasta auxiliar', folders: true, hint: false },
+    companionFolder: { skip: true },
+    dealerFile:    { zone: '.card',  label: 'Solte aqui o Excel do Dealer' }
+  };
+  var dropZones = [];
+  var lastZone = null;
+
+  function acceptTokens(input) {
+    return String(input.getAttribute('accept') || '').split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean);
+  }
+  function accepts(input, file) {
+    var tokens = acceptTokens(input);
+    if (!tokens.length) return true;
+    var name = file.name.toLowerCase(), type = String(file.type || '').toLowerCase();
+    return tokens.some(function (t) {
+      if (t.charAt(0) === '.') return name.slice(-t.length) === t;
+      if (t.slice(-2) === '/*') return type.indexOf(t.slice(0, -1)) === 0;
+      return type === t;
+    });
+  }
+  function formatsText(input) {
+    var ext = acceptTokens(input).filter(function (t) { return t.charAt(0) === '.'; });
+    return ext.length ? ext.join(', ') : 'o formato indicado';
+  }
+  function isVisible(el) { return !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length)); }
+
+  function toast(msg, kind) {
+    var el = document.getElementById('cf-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cf-toast'; el.className = 'cf-toast'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.className = 'cf-toast is-show' + (kind === 'error' ? ' is-error' : '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.className = 'cf-toast'; }, 3600);
+  }
+
+  // Lê arquivos soltos, incluindo o conteúdo de pastas.
+  function readEntry(entry, out) {
+    return new Promise(function (resolve) {
+      if (!entry) return resolve();
+      if (entry.isFile) {
+        entry.file(function (f) { out.push({ file: f, nested: true }); resolve(); }, function () { resolve(); });
+      } else if (entry.isDirectory) {
+        var reader = entry.createReader(), all = [];
+        (function next() {
+          reader.readEntries(function (batch) {
+            if (!batch.length) return Promise.all(all.map(function (e) { return readEntry(e, out); })).then(resolve);
+            all = all.concat(Array.prototype.slice.call(batch)); next();
+          }, function () { resolve(); });
+        })();
+      } else resolve();
+    });
+  }
+  function collectDropped(dt, allowFolders) {
+    var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
+    var hasDir = allowFolders && items.some(function (it) { var e = it.webkitGetAsEntry && it.webkitGetAsEntry(); return e && e.isDirectory; });
+    if (!hasDir) return Promise.resolve(Array.prototype.slice.call(dt.files || []));
+    var out = [];
+    var entries = items.map(function (it) { return it.webkitGetAsEntry && it.webkitGetAsEntry(); });
+    return Promise.all(entries.map(function (e) {
+      if (e && e.isFile) return new Promise(function (r) { e.file(function (f) { out.push({ file: f, nested: false }); r(); }, function () { r(); }); });
+      return readEntry(e, out);
+    })).then(function () {
+      // Arquivos soltos diretamente vêm antes dos que estavam dentro de pastas.
+      out.sort(function (a, b) { return (a.nested ? 1 : 0) - (b.nested ? 1 : 0); });
+      return out.map(function (x) { return x.file; });
+    });
+  }
+
+  function deliver(zone, files, how) {
+    var input = zone.input;
+    var ok = files.filter(function (f) { return accepts(input, f); });
+    var rejected = files.length - ok.length;
+    if (!ok.length) {
+      toast((files.length === 1 ? 'Formato não aceito neste campo: ' + files[0].name : 'Nenhum arquivo aceito neste campo') + '. Use ' + formatsText(input) + '.', 'error');
+      return false;
+    }
+    if (!input.multiple) ok = ok.slice(0, 1);
+    try {
+      var dt = new DataTransfer();
+      ok.forEach(function (f) { dt.items.add(f); });
+      input.files = dt.files;
+    } catch (e) {
+      toast('Este navegador não permite ' + how + ' arquivos aqui. Use o botão de seleção.', 'error');
+      return false;
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    var extra = rejected ? ' (' + rejected + ' ignorado' + (rejected > 1 ? 's' : '') + ' por formato)' : '';
+    var extraMulti = (!input.multiple && files.length > 1) ? ' Somente o primeiro foi usado.' : '';
+    toast((ok.length === 1 ? 'Arquivo recebido: ' + ok[0].name : ok.length + ' arquivos recebidos') + extra + '.' + extraMulti);
+    return true;
+  }
+
+  function zoneFor(input) {
+    var cfg = DROP_CONFIG[input.id] || {};
+    if (cfg.skip) return null;
+    var zone = cfg.zone ? (cfg.zone.charAt(0) === '#' ? document.querySelector(cfg.zone) : input.closest(cfg.zone)) : null;
+    if (!zone) zone = input.closest('label') || (input.id && document.querySelector('label[for="' + input.id + '"]')) || input.parentElement;
+    if (!zone) return null;
+    var label = cfg.label || 'Solte o arquivo aqui';
+    return { el: zone, input: input, label: label, folders: !!cfg.folders || input.hasAttribute('webkitdirectory'), hint: cfg.hint !== false };
+  }
+
+  function addHint(z) {
+    if (!z.hint) return;
+    var anchor = z.input.closest('label') || (z.input.id && document.querySelector('label[for="' + z.input.id + '"]'));
+    if (!anchor || !anchor.parentNode) return;
+    var p = document.createElement('p');
+    p.className = 'cf-drop-hint';
+    p.textContent = 'ou arraste o arquivo até este quadro · Ctrl+V cola um arquivo copiado';
+    anchor.parentNode.insertBefore(p, anchor.nextSibling);
+  }
+
+  function innermostZone(target) {
+    var best = null;
+    dropZones.forEach(function (z) {
+      if (!isVisible(z.el) || !z.el.contains(target)) return;
+      if (!best || best.el.contains(z.el)) best = z;
+    });
+    return best;
+  }
+
+  function setupDropZones() {
+    var inputs = document.querySelectorAll('input[type="file"]');
+    if (!inputs.length) return;
+    Array.prototype.forEach.call(inputs, function (input) {
+      var z = zoneFor(input);
+      if (!z) return;
+      z.el.classList.add('cf-dropzone');
+      z.el.setAttribute('data-drop-label', z.label);
+      dropZones.push(z);
+      addHint(z);
+    });
+
+    var depth = 0;
+    function hasFiles(e) { var t = e.dataTransfer && e.dataTransfer.types; return t && Array.prototype.indexOf.call(t, 'Files') !== -1; }
+    function clearDrag() {
+      depth = 0; root.classList.remove('cf-dragging');
+      dropZones.forEach(function (z) { z.el.classList.remove('cf-drop-over'); });
+    }
+
+    window.addEventListener('dragenter', function (e) {
+      if (!hasFiles(e)) return;
+      depth++; root.classList.add('cf-dragging');
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth) clearDrag();
+    });
+    window.addEventListener('dragover', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); // impede o navegador de abrir o arquivo e sair da página
+      var z = innermostZone(e.target);
+      dropZones.forEach(function (x) { x.el.classList.toggle('cf-drop-over', x === z); });
+      e.dataTransfer.dropEffect = z ? 'copy' : 'none';
+    });
+    window.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      var z = innermostZone(e.target);
+      clearDrag();
+      if (!z) { toast('Solte o arquivo sobre um dos quadros destacados.', 'error'); return; }
+      lastZone = z;
+      collectDropped(e.dataTransfer, z.folders).then(function (files) {
+        if (files.length) deliver(z, files, 'soltar');
+      });
+    });
+    window.addEventListener('dragend', clearDrag);
+
+    // Lembra o último quadro usado, para saber onde colar.
+    document.addEventListener('pointerdown', function (e) { var z = innermostZone(e.target); if (z) lastZone = z; }, true);
+    document.addEventListener('focusin', function (e) { var z = innermostZone(e.target); if (z) lastZone = z; });
+
+    document.addEventListener('paste', function (e) {
+      var cd = e.clipboardData;
+      var files = cd && cd.files ? Array.prototype.slice.call(cd.files) : [];
+      if (!files.length) return;
+      // Colar texto (ex.: grade copiada do Excel) em campos de texto continua normal.
+      var t = e.target, editable = t && (t.isContentEditable || /^(TEXTAREA|INPUT)$/.test(t.tagName));
+      if (editable && cd.getData && cd.getData('text/plain')) return;
+      var visible = dropZones.filter(function (z) { return isVisible(z.el); });
+      var target = (lastZone && visible.indexOf(lastZone) !== -1 && files.some(function (f) { return accepts(lastZone.input, f); })) ? lastZone
+        : visible.filter(function (z) { return files.some(function (f) { return accepts(z.input, f); }); })[0];
+      if (!target) return; // ex.: imagem copiada — nenhum campo aceita, segue o comportamento normal
+      e.preventDefault();
+      if (deliver(target, files, 'colar')) {
+        target.el.classList.add('cf-drop-flash');
+        setTimeout(function () { target.el.classList.remove('cf-drop-flash'); }, 900);
+      }
+    });
+  }
+
   // API usada pelo painel.
   window.CentralShell = { MODULES: MODULES, Store: Store, difalState: difalState, pendingFor: pendingFor, BASE: BASE, VERSION: VERSION };
 
@@ -241,6 +450,7 @@
     var active = currentModule();
     buildSidebar(active);
     startCapture(active);
+    setupDropZones();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

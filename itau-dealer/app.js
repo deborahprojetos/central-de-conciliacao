@@ -887,9 +887,7 @@
     render();
   }));
 
-  ['dragenter','dragover'].forEach(ev => els.dropZone.addEventListener(ev, e => { e.preventDefault(); els.dropZone.classList.add('dragover'); }));
-  ['dragleave','drop'].forEach(ev => els.dropZone.addEventListener(ev, e => { e.preventDefault(); els.dropZone.classList.remove('dragover'); }));
-  els.dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files, true));
+  // V48.4: arrastar e soltar passou para o shell da Central (shell.js), em todos os campos de arquivo.
 })();
   async function parseDealerFile(file) {
     if (!file) return null;

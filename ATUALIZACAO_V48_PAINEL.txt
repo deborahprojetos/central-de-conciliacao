@@ -56,3 +56,18 @@ V48.3 - CIELO04 · BANDEIRA
 - Aluguel de máquina mantido como estava (tipo 02), por se tratar de antecipação.
 - Validado: 7.165 linhas com a bandeira correta; regra de parcela da V48.2 mantida.
 - Cache-busting do módulo Cielo atualizado (?v=48.3).
+
+V48.4 - ARRASTAR E SOLTAR / COLAR ARQUIVOS EM TODA A CENTRAL (shell 2.1)
+- Todos os campos de arquivo aceitam arrastar e soltar sobre o quadro do campo:
+  Cielo (planilha), DIFAL (planilha Banco Util e backup .json),
+  Itaú pagamentos (Excel do Dealer), Itaú completa (arquivo Itaú, arquivo/pasta auxiliar,
+  Excel do Dealer).
+- Ctrl+V cola um arquivo copiado no Explorer. Colar texto (grade do Excel) nos campos
+  de texto continua funcionando normalmente.
+- Ao arrastar, os quadros que aceitam arquivo ficam destacados com o que pode ser solto.
+- Arquivo em formato errado é recusado com aviso; soltar fora dos quadros não abre o
+  arquivo no navegador (não perde a página).
+- Na pasta auxiliar do Itaú, é possível soltar a pasta inteira VEICULOS_arquivos.
+- Itaú completa: removido código de um quadro de arraste antigo que não existia mais na
+  página e gerava erro no console (app.js?v=48.4).
+- Implementado no shell.js/shell.css (v2.1); a lógica das aplicações não mudou.
