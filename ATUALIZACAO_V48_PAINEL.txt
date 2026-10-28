@@ -189,3 +189,19 @@ V48.10 - EXTRATO DO MÊS · LEITURA CORRETA DO EXCEL DO BANCO
 - Contagem de lançamentos sem as linhas de saldo.
 - Na primeira abertura desta versão, a pasta inteira é lida de novo, para substituir os
   lançamentos lidos de forma incompleta pela versão anterior.
+
+V48.11 - EXTRATO DO MÊS · SALDO CORRETO E CARDS PELOS FILTROS
+- Saldo não é mais somado. Novos cards "Saldo inicial" e "Saldo final":
+  saldo do banco (SALDO ANTERIOR) + lançamentos até o dia escolhido. O saldo final é
+  conferido com o saldo informado pelo banco ("Confere com o saldo do banco" ou a diferença).
+  Conferido no VEICULOS.xlsx real: 672.565,01 → 26/10 423.861,55 → 27/10 661.533,63.
+- Rodapé da tabela: coluna Saldo mostra o saldo final do dia (ou do período).
+- Cards de Valor, Entradas e Saídas mostram a seleção (dia, tipo, status, responsável,
+  busca); o total do mês fica na linha de baixo.
+- Arquivos da mesma agência/conta formam uma conta só: VEICULOS.xls e VEICULOS.xlsx da
+  mesma conta não somam duas vezes (o dia do arquivo mais novo substitui o mesmo dia).
+  Os dados já importados em duplicidade são corrigidos na releitura automática da pasta.
+- Status e responsáveis são mantidos quando o mesmo lançamento volta em outro arquivo.
+- "Ignorar linhas de saldo" virou "Mostrar linhas de saldo na tabela" (as somas nunca
+  incluem linhas de saldo).
+- SALDO ANTERIOR com a mesma data do primeiro lançamento é tratado como saldo do início do dia.

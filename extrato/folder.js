@@ -14,7 +14,7 @@
   var MAP_KEY = 'cf:extrato:mapa';
   var POLL_MS = 120000;
   // Quando a leitura dos arquivos melhora, a pasta inteira é lida de novo uma vez.
-  var READER_VERSION = '1.5';
+  var READER_VERSION = '1.6';
 
   var dir = null, granted = false, scanning = false, timer = null;
   var handles = {};   // caminho → FileSystemFileHandle (nesta sessão)

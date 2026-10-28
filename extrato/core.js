@@ -225,6 +225,7 @@
   function sumOptions(columns, rows) {
     var opts = [];
     columns.forEach(function (c) {
+      if (c.saldo) return; // saldo não se soma: vira "Saldo inicial / Saldo final"
       var pos = false, neg = false;
       rows.forEach(function (r) { var v = r.values[c.id]; if (v > 0) pos = true; if (v < 0) neg = true; });
       opts.push({ key: c.name + '|all', col: c.id, mode: 'all', label: c.name, saldo: c.saldo });

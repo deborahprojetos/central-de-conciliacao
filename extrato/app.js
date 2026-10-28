@@ -120,6 +120,38 @@
     src = src || '';
     opts = opts || {};
     var old = st.months[m];
+    var oldMarks = (old && old.marks) || {};
+    // Leva status e responsáveis de lançamentos substituídos para os mesmos lançamentos no arquivo novo.
+    function moveMarks(removed, incoming) {
+      var bySig = {};
+      incoming.forEach(function (r) { var k = rowSig(r); (bySig[k] = bySig[k] || []).push(r); });
+      removed.forEach(function (r) {
+        if (!oldMarks[r.id]) return;
+        var list = bySig[rowSig(r)];
+        if (!list || !list.length) { delete oldMarks[r.id]; return; }
+        var same = list.filter(function (x) { return x.id === r.id; })[0];
+        var to = same || list[0];
+        list.splice(list.indexOf(to), 1);
+        if (to.id === r.id) return;                 // mesmo lançamento, mesmo identificador
+        if (!oldMarks[to.id]) oldMarks[to.id] = oldMarks[r.id];
+        delete oldMarks[r.id];
+      });
+    }
+    // Conta bancária identificada no arquivo: todos os arquivos dessa conta formam uma só origem.
+    if (parsed.account) {
+      var acct = 'conta:' + parsed.account;
+      if (old && old.sources) {
+        Object.keys(old.sources).forEach(function (k) {
+          if (k === acct) return;
+          if (old.sources[k].account === parsed.account || k === src) {
+            old.rows.forEach(function (r) { if ((r.src || '') === k) r.src = acct; });
+            if (!old.sources[acct]) old.sources[acct] = old.sources[k];
+            delete old.sources[k];
+          }
+        });
+      }
+      src = acct;
+    }
     var yyyy = m.slice(0, 4);
     var columns = old ? old.columns.slice() : [];
     var byName = {};
@@ -165,19 +197,20 @@
       }
     }
     if (replaced.length) {
-      // Leva status e responsáveis do arquivo antigo para os mesmos lançamentos no novo.
-      var oldMarks = (old && old.marks) || {}, bySig = {};
-      rows.forEach(function (r) { var k = rowSig(r); (bySig[k] = bySig[k] || []).push(r); });
-      old.rows.forEach(function (r) {
-        if (replaced.indexOf(r.src || '') === -1 || !oldMarks[r.id]) return;
-        var list = bySig[rowSig(r)];
-        if (list && list.length) { var to = list.shift(); if (!oldMarks[to.id]) oldMarks[to.id] = oldMarks[r.id]; }
-        delete oldMarks[r.id];
-      });
+      moveMarks(old.rows.filter(function (r) { return replaced.indexOf(r.src || '') !== -1; }), rows);
       old.rows = old.rows.filter(function (r) { return replaced.indexOf(r.src || '') === -1; });
       replaced.forEach(function (k) { if (old.sources) delete old.sources[k]; });
     }
 
+    if (old) {
+      var seenSaldo = {};
+      old.rows = old.rows.filter(function (r) {
+        if (!r.saldo) return true;
+        var k = (r.src || '') + '|' + rowSig(r);
+        if (seenSaldo[k]) return false;
+        seenSaldo[k] = 1; return true;
+      });
+    }
     var others = old ? old.rows.filter(function (r) { return (r.src || '') !== src; }) : [];
     // Mesmo arquivo com outro período (ex.: FRANCE.xlsx salvo de novo no dia seguinte):
     // atualiza só os dias que vieram no arquivo novo e mantém os dias anteriores.
@@ -186,6 +219,7 @@
       rows.forEach(function (r) { if (!r.saldo) newDays[r.day] = 1; });
       if (!Object.keys(newDays).length) rows.forEach(function (r) { newDays[r.day] = 1; });
       var keepOld = old.rows.filter(function (r) { return (r.src || '') === src && !newDays[r.day]; });
+      moveMarks(old.rows.filter(function (r) { return (r.src || '') === src && newDays[r.day]; }), rows);
       var keptDays = {};
       keepOld.forEach(function (r) { keptDays[r.day] = 1; });
       rows = rows.filter(function (r) { return newDays[r.day] || !keptDays[r.day]; });
@@ -194,13 +228,14 @@
     var all = others.concat(rows).map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
       return a.r.day.slice(0, 2) - b.r.day.slice(0, 2) || a.i - b.i;
     }).map(function (x) { return x.r; });
-    var marks = (old && old.marks) || {};
+    var marks = oldMarks;
     var kept = rows.filter(function (r) { return marks[r.id]; }).length;
     var opts = Core.sumOptions(columns, all);
     var keep = ((old && old.sum) || []).filter(function (k) { return opts.some(function (o) { return o.key === k; }); });
     var sources = (old && old.sources) || {};
     if (old && !old.sources && others.length) sources[''] = { label: old.fileName, importedAt: old.importedAt };
     sources[src] = { label: label || fileName, fileName: fileName, account: parsed.account || '', importedAt: new Date().toISOString() };
+    if (parsed.account) sources[src].label = (label || fileName) + ' · conta ' + parsed.account;
     st.months[m] = {
       fileName: fileName, importedAt: new Date().toISOString(), columns: columns, rows: all, marks: marks,
       sum: keep.length ? keep : Core.defaultSumKeys(columns, all), sources: sources
@@ -274,7 +309,9 @@
   function visibleRows(mo) {
     var ui = state.ui, day = ui.day || '', st = ui.status || '', tp = ui.type || '', rp = ui.resp || '';
     var q = $('search').value.trim().toLowerCase();
+    var showSaldo = state.prefs.showSaldo !== false;
     return mo.rows.filter(function (r) {
+      if (r.saldo && (!showSaldo || tp || st || rp)) return false;
       if (day && r.day !== day) return false;
       var mk = mo.marks[r.id] || {};
       if (st === '-' && mk.status) return false;
@@ -286,7 +323,60 @@
       return true;
     });
   }
-  function sumBase(rows) { return state.prefs.ignoreSaldo === false ? rows : rows.filter(function (r) { return !r.saldo; }); }
+  // Movimentos nunca incluem linhas de saldo.
+  function sumBase(rows) { return rows.filter(function (r) { return !r.saldo; }); }
+  function dayNum(d) { return Number(String(d).slice(0, 2)); }
+
+  // Saldo de cada conta no fim de um dia = saldo de referência do banco + movimentos entre os dias.
+  // dia vazio = período inteiro. Devolve { start, end, bank, diff, accounts }.
+  function balances(mo, day) {
+    var saldoCols = mo.columns.filter(function (c) { return c.saldo; }).map(function (c) { return c.id; });
+    var moveCols = mo.columns.filter(function (c) { return !c.saldo; }).map(function (c) { return c.id; });
+    if (!saldoCols.length) return null;
+    var bySrc = {};
+    mo.rows.forEach(function (r) { (bySrc[r.src || ''] = bySrc[r.src || ''] || []).push(r); });
+    var out = { start: 0, end: 0, bank: 0, bankKnown: true, diff: 0, accounts: 0 };
+    Object.keys(bySrc).forEach(function (k) {
+      var rows = bySrc[k];
+      var sval = function (r) { for (var i = 0; i < saldoCols.length; i++) { var v = r.values[saldoCols[i]]; if (typeof v === 'number') return v; } return null; };
+      var movByDay = {};
+      rows.forEach(function (r) {
+        if (r.saldo) return;
+        var v = moveCols.reduce(function (s, c) { return s + (typeof r.values[c] === 'number' ? r.values[c] : 0); }, 0);
+        movByDay[dayNum(r.day)] = (movByDay[dayNum(r.day)] || 0) + v;
+      });
+      // Referência: o saldo mais antigo informado pelo banco (de preferência "SALDO ANTERIOR").
+      var saldoRows = rows.filter(function (r) { return r.saldo && sval(r) !== null; });
+      if (!saldoRows.length) return;
+      var firstDay = Math.min.apply(null, saldoRows.map(function (r) { return dayNum(r.day); }));
+      var onFirst = saldoRows.filter(function (r) { return dayNum(r.day) === firstDay; });
+      var anchor = onFirst.filter(function (r) { return /anterior/i.test(r.desc); })[0] || onFirst[onFirst.length - 1];
+      var aDay = firstDay, aVal = sval(anchor);
+      // "SALDO ANTERIOR" com a mesma data dos primeiros lançamentos vale para o início do dia.
+      if (/anterior/i.test(anchor.desc) && movByDay[firstDay]) aDay = firstDay - 1;
+      var endOf = function (d) {
+        var v = aVal;
+        Object.keys(movByDay).forEach(function (x) { x = Number(x); if (x > aDay && x <= d) v += movByDay[x]; if (x <= aDay && x > d) v -= movByDay[x]; });
+        return Math.round(v * 100) / 100;
+      };
+      var movDays = Object.keys(movByDay).map(Number);
+      var lastDay = Math.max.apply(null, movDays.concat(saldoRows.map(function (r) { return dayNum(r.day); })));
+      var firstMov = movDays.length ? Math.min.apply(null, movDays) : aDay + 1;
+      var d = day ? dayNum(day) : lastDay;
+      var start = day ? endOf(d) - (movByDay[d] || 0) : endOf(firstMov) - (movByDay[firstMov] || 0);
+      var end = endOf(d);
+      // Saldo que o banco informou no fim do dia: última linha do dia com saldo
+      // (linha "SALDO DO DIA" ou saldo ao lado do último lançamento).
+      var bankRows = rows.filter(function (r) { return dayNum(r.day) === d && sval(r) !== null && !/anterior/i.test(r.desc); });
+      if (bankRows.length) out.bank += sval(bankRows[bankRows.length - 1]); else out.bankKnown = false;
+      out.start += Math.round(start * 100) / 100; out.end += end; out.accounts++;
+    });
+    if (!out.accounts) return null;
+    out.start = Math.round(out.start * 100) / 100; out.end = Math.round(out.end * 100) / 100;
+    out.bank = Math.round(out.bank * 100) / 100;
+    out.diff = out.bankKnown ? Math.round((out.end - out.bank) * 100) / 100 : 0;
+    return out;
+  }
 
   function updateRespOptions(mo) {
     var resp = {};
@@ -313,7 +403,7 @@
     $('workArea').hidden = !mo;
     if (!mo) return;
 
-    $('ignoreSaldo').checked = state.prefs.ignoreSaldo !== false;
+    $('ignoreSaldo').checked = state.prefs.showSaldo !== false;
 
     // Dias
     var days = [], count = {};
@@ -334,11 +424,22 @@
     var monthBase = sumBase(mo.rows), visBase = sumBase(visibleRows(mo));
     var filtered = !!(state.ui.day || state.ui.status || state.ui.type || state.ui.resp || $('search').value.trim());
     var chosen = opts.filter(function (o) { return sel.indexOf(o.key) !== -1; });
-    $('sumTotals').innerHTML = chosen.length ? chosen.map(function (o) {
-      var total = Core.applySum(o, monthBase);
+    var scope = state.ui.day ? 'dia ' + state.ui.day : monthLabel(state.lastMonth);
+    var cards = '';
+    var bal = balances(mo, state.ui.day || '');
+    if (bal) {
+      var check = !bal.bankKnown ? '' : (Math.abs(bal.diff) < 0.01
+        ? '<small class="is-ok">Confere com o saldo do banco</small>'
+        : '<small class="is-warn">Banco: ' + brl.format(bal.bank) + ' · diferença ' + brl.format(bal.diff) + '</small>');
+      cards += '<div class="ex-total ex-balance"><span>Saldo inicial</span><strong>' + brl.format(bal.start) + '</strong><small>Início ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + (bal.accounts > 1 ? ' · ' + bal.accounts + ' contas' : '') + '</small></div>';
+      cards += '<div class="ex-total ex-balance"><span>Saldo final</span><strong class="' + (bal.end < 0 ? 'is-neg' : '') + '">' + brl.format(bal.end) + '</strong><small>Fim ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + '</small>' + check + '</div>';
+    }
+    cards += chosen.map(function (o) {
+      var total = Core.applySum(o, visBase);
       return '<div class="ex-total"><span>' + esc(o.label) + '</span><strong class="' + (total < 0 ? 'is-neg' : '') + '">' + brl.format(total) + '</strong>' +
-        (filtered ? '<small>Seleção: ' + brl.format(Core.applySum(o, visBase)) + '</small>' : '<small>' + esc(monthLabel(state.lastMonth)) + '</small>') + '</div>';
-    }).join('') : '<div class="ex-total ex-total-empty"><span>Nenhum campo selecionado</span></div>';
+        '<small>' + (filtered ? 'Seleção · mês: ' + brl.format(Core.applySum(o, monthBase)) : esc(scope)) + '</small></div>';
+    }).join('');
+    $('sumTotals').innerHTML = cards || '<div class="ex-total ex-total-empty"><span>Nenhum campo selecionado</span></div>';
 
     // Contagem de status
     var nP = 0, nA = 0;
@@ -371,8 +472,13 @@
     }).join('');
     $('emptyRows').hidden = rows.length > 0;
     var footBase = sumBase(rows);
-    $('tfoot').innerHTML = rows.length ? '<tr><td colspan="' + (multi ? 3 : 2) + '">Total da seleção</td>' + cols.map(function (c) {
-      var t = c.saldo ? null : Core.applySum({ col: c.id, mode: 'all' }, footBase);
+    var onlyDay = !(state.ui.status || state.ui.type || state.ui.resp || $('search').value.trim());
+    var footBal = onlyDay ? balances(mo, state.ui.day || '') : null;
+    var firstSaldo = true;
+    $('tfoot').innerHTML = rows.length ? '<tr><td colspan="' + (multi ? 3 : 2) + '">Total da seleção' + (footBal ? '<small>Saldo: fim ' + (state.ui.day ? 'do dia ' + esc(state.ui.day) : 'do período') + '</small>' : '') + '</td>' + cols.map(function (c) {
+      var t = null;
+      if (c.saldo) { if (footBal && firstSaldo) { t = footBal.end; firstSaldo = false; } }
+      else t = Core.applySum({ col: c.id, mode: 'all' }, footBase);
       return '<td class="num' + (t < 0 ? ' is-neg' : '') + '">' + (t === null ? '' : brl.format(t)) + '</td>';
     }).join('') + '<td colspan="2"></td></tr>' : '';
     $('rowCount').textContent = rows.length + ' de ' + mo.rows.length + ' lançamentos · ' + (multi ? srcKeys.length + ' arquivos' : mo.fileName);
@@ -399,7 +505,7 @@
   $('respFilter').addEventListener('change', function (e) { state.ui.resp = e.target.value; save(); render(); });
   var searchTimer = null;
   $('search').addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(render, 200); });
-  $('ignoreSaldo').addEventListener('change', function (e) { state.prefs.ignoreSaldo = e.target.checked; save(); render(); });
+  $('ignoreSaldo').addEventListener('change', function (e) { state.prefs.showSaldo = e.target.checked; save(); render(); });
   $('sumOptions').addEventListener('click', function (e) {
     var b = e.target.closest('.ex-chip'); if (!b) return;
     var mo = current(); if (!mo) return;
