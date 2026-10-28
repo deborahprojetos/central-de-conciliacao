@@ -1,0 +1,41 @@
+CENTRAL DE CONCILIAÇÃO - VALIDAÇÃO V25
+Data: 26/08/2026
+
+Escopo alterado
+- Somente a apresentação/filtro do itau-mvp.
+- Motor de conciliação da V24 preservado.
+- itau-dealer original, Cielo e DIFAL preservados sem alteração.
+
+Exibição final
+1. Uma única página de resultados.
+2. Uma única tabela para todos os lançamentos/conclusões.
+3. Nenhum status foi transformado em aba ou página separada.
+4. Ordem fixa dos resultados:
+   - CONCILIADO
+   - CONCILIADO AGRUPADO
+   - CONCILIADO VALOR
+   - ANALISAR CONCILIAÇÃO
+   - ENCONTRADO PARCIAL
+   - NÃO ENCONTRADO
+5. Agrupamentos continuam consolidados em uma única linha, com indicação 1×N, N×1 ou N×N.
+
+Filtros adicionados
+- Todos os status
+- CONCILIADO
+- CONCILIADO AGRUPADO
+- CONCILIADO VALOR
+- ANALISAR CONCILIAÇÃO
+- ENCONTRADO PARCIAL
+- NÃO ENCONTRADO
+- Busca textual por nome, título ou documento
+- Botão Limpar filtros
+- Filtro de status e busca funcionam simultaneamente na mesma tabela.
+- Contador mostra X de Y ocorrências quando há filtro ativo.
+
+Validações técnicas
+- node --check app.js: OK
+- node --check core.js: OK
+- node --check intelligent-reconciler.js: OK
+- cielo: idêntico à V24
+- difal: idêntico à V24
+- itau-dealer original: idêntico à V24

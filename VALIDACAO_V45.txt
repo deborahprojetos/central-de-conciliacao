@@ -1,0 +1,16 @@
+V45 - CIELO04 - DATA DA BAIXA / ANTECIPACAO
+
+Correcoes:
+- Taxa total da antecipacao / Nota de Debito inicia em R$ 0,00.
+- Novo campo obrigatorio "Data da baixa / antecipacao".
+- A data informada pelo usuario passa a ser gravada nos campos operacionais de data dos registros D/E do CIELO04.
+- O cabecalho do lote tambem usa a data informada para a operacao.
+- Datas originais de venda permanecem preservadas nos campos historicos do registro E.
+- A data escolhida aparece na conferencia e no relatorio de controle.
+- Geracao do TXT fica bloqueada se a data nao estiver informada.
+- Cache-busting atualizado para V45.
+
+Exemplo:
+Data informada: 18/09/2026
+Registros operacionais do CIELO04: 18092026
+Cabecalho do lote: 20260918

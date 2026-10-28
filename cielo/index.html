@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Antecipação Cielo · Central Financeira</title>
+<link rel="stylesheet" href="styles.css?v=45">
+<link rel="stylesheet" href="../ui-premium.css">
+<link rel="stylesheet" href="../shell.css?v=2.5">
+<script src="../shell.js?v=2.5"></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">C</div>
+    <div><strong>Antecipação Cielo</strong></div>
+  </div>
+  <div class="top-actions"><nav class="central-nav" aria-label="Navegação da Central"><a href="../">← Central</a><a href="/__logout">Sair</a></nav></div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Antecipação Cielo</h1>
+  </section>
+
+  <section class="card">
+    <div class="heading"><b>1</b><div><h2>Arquivo Cielo</h2></div></div>
+    <label class="upload">
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+      <strong>Selecionar planilha</strong>
+      <span id="fileName">Nenhum arquivo selecionado</span>
+    </label>
+
+    <div class="field">
+      <label for="feeInput">Taxa total da antecipação / Nota de Débito</label>
+      <div class="money-input"><span>R$</span><input id="feeInput" value="0,00" inputmode="decimal"></div>
+    </div>
+
+    <div class="field">
+      <label for="settlementDateInput">Data da baixa / antecipação</label>
+      <input id="settlementDateInput" class="date-input" type="date">
+    </div>
+
+    <button id="analyzeBtn" class="button primary">Analisar planilha</button>
+    <div id="errorBox" class="alert error hidden"></div>
+    <div id="warningBox" class="alert warning hidden"></div>
+  </section>
+
+  <div id="results" class="hidden">
+    <section class="card">
+      <div class="heading"><b>2</b><div><h2>Conferência</h2></div></div>
+      <div class="metrics flow-metrics">
+        <div><span>Títulos</span><strong id="titles">—</strong></div>
+        <div><span>Total bruto</span><strong id="gross">—</strong></div>
+        <div><span>Taxa administrativa</span><strong id="adminFee">—</strong></div>
+        <div class="total-clear"><span>Total a baixar no Dealer</span><strong id="totalClear">—</strong></div>
+        <div class="note"><span>1. Nota de Débito manual</span><strong id="noteFee">—</strong></div>
+        <div class="cielo04"><span>2. CIELO04</span><strong id="cielo04Total">—</strong></div>
+        <div><span>Data da baixa</span><strong id="settlementDateSummary">—</strong></div>
+      </div>
+      <div class="est">Estabelecimento(s): <strong id="establishments">—</strong></div>
+    </section>
+
+    <section class="card">
+      <div class="heading"><b>3</b><div><h2>Alocação da Nota de Débito</h2></div></div>
+
+      <div class="allocation-summary">
+        <div><span>Nota de Débito</span><strong id="noteValue">—</strong></div>
+        <div><span>Títulos selecionados</span><strong id="selectedCount">—</strong></div>
+        <div><span>Valor dos títulos selecionados</span><strong id="selectedTotal">—</strong></div>
+        <div><span>CIELO04 após a Nota de Débito</span><strong id="cielo04AllocationTotal">—</strong></div>
+      </div>
+
+      <div id="allocationStatus" class="allocation-status"></div>
+
+      <div class="allocation-tools">
+        <button id="autoSelectBtn" class="button secondary">Selecionar automaticamente</button>
+        <input id="allocationSearch" class="allocation-search" placeholder="Pesquisar autorização, NSU, parcela ou data">
+      </div>
+
+
+      <div class="table-wrap">
+        <table class="allocation-table">
+          <thead>
+            <tr>
+              <th>Usar</th>
+              <th>Data</th>
+              <th>Autorização</th>
+              <th>NSU</th>
+              <th>Parcela</th>
+              <th>Valor líquido</th>
+            </tr>
+          </thead>
+          <tbody id="allocationBody"></tbody>
+        </table>
+      </div>
+
+      <h3>Detalhamento da distribuição</h3>
+      <div class="table-wrap">
+        <table class="allocation-table detail">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Autorização</th>
+              <th>NSU</th>
+              <th>Parcela</th>
+              <th>Original</th>
+              <th>ND aplicada</th>
+              <th>Saldo CIELO04</th>
+            </tr>
+          </thead>
+          <tbody id="allocationDetails"></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <section class="card">
+      <div class="heading"><b>4</b><div><h2>Gerar arquivo</h2></div></div>
+
+      <label class="confirm">
+        <input type="checkbox" id="confirmBox">
+        <span>Nota de Débito baixada nos títulos acima antes de importar o CIELO04</span>
+      </label>
+
+      <div class="actions">
+        <button id="downloadTxt" class="button primary" disabled>Gerar CIELO04.TXT</button>
+        <button id="downloadControl" class="button secondary" disabled>Baixar controle</button>
+      </div>
+
+    </section>
+  </div>
+</main>
+
+<footer>Antecipação Cielo · versão 45</footer>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="core.js?v=48.3"></script>
+<script src="app.js?v=48.3"></script>
+
+
+
+
+
+
+</body>
+</html>

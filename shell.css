@@ -1,0 +1,187 @@
+/* Central Financeira · Menu lateral compartilhado (v2.0) */
+:root {
+  --cf-side: 264px;
+  --cf-side-collapsed: 76px;
+  --cf-navy: #111d3b;
+  --cf-navy-2: #1a2a52;
+  --cf-navy-line: rgba(255, 255, 255, .08);
+  --cf-side-text: #c3cce0;
+  --cf-side-muted: #7f8bab;
+  --cf-accent: #8fb0ff;
+  --cf-alert: #f2b84b;
+}
+html.cf-collapsed { --cf-side: var(--cf-side-collapsed); }
+
+html.cf-shell body { padding-left: var(--cf-side) !important; margin: 0; transition: padding-left .2s ease; }
+
+/* O link "← Central" das aplicações passa a ser o menu lateral. */
+html.cf-shell .central-nav { display: none !important; }
+html.cf-shell .topbar, html.cf-shell body > header { padding-left: 28px !important; padding-right: 28px !important; }
+
+.cf-sidebar {
+  position: fixed; inset: 0 auto 0 0; z-index: 60; width: var(--cf-side);
+  display: flex; flex-direction: column; gap: 6px; padding: 16px 12px 14px;
+  color: var(--cf-side-text); background: var(--cf-navy);
+  border-right: 1px solid #0a1430; overflow-y: auto; overflow-x: hidden;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: width .2s ease, transform .22s ease;
+}
+.cf-sidebar *, .cf-mobilebar * { box-sizing: border-box; }
+.cf-ico { width: 20px; height: 20px; flex: 0 0 20px; }
+
+.cf-brand { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 14px; border-bottom: 1px solid var(--cf-navy-line); margin-bottom: 8px; }
+.cf-brand-link { display: flex; align-items: center; gap: 11px; min-width: 0; color: #fff; text-decoration: none; }
+.cf-mark { width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; border-radius: 10px; color: var(--cf-navy); background: #fff; font-size: 12px; font-weight: 850; letter-spacing: .02em; }
+.cf-brand-text { display: flex; flex-direction: column; min-width: 0; white-space: nowrap; }
+.cf-brand-text strong { font-size: 14px; letter-spacing: -.01em; }
+.cf-brand-text small { margin-top: 2px; color: var(--cf-side-muted); font-size: 11.5px; }
+.cf-collapse { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--cf-navy-line); border-radius: 8px; color: var(--cf-side-muted); background: transparent; cursor: pointer; }
+.cf-collapse:hover { color: #fff; background: var(--cf-navy-2); }
+.cf-collapse .cf-ico { width: 16px; height: 16px; transition: transform .2s ease; }
+
+.cf-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; }
+.cf-group { margin: 16px 10px 6px; color: var(--cf-side-muted); font-size: 11px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.cf-item {
+  position: relative; display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 9px 11px;
+  border-radius: 10px; color: var(--cf-side-text); text-decoration: none; font-size: 13px; font-weight: 600; line-height: 1.25;
+}
+.cf-item:hover { color: #fff; background: rgba(255, 255, 255, .05); }
+.cf-item.is-active { color: #fff; background: var(--cf-navy-2); }
+.cf-item.is-active::before { content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--cf-accent); }
+.cf-item.is-active .cf-ico { color: var(--cf-accent); }
+.cf-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cf-pill { flex: 0 0 auto; min-width: 22px; padding: 2px 7px; border-radius: 999px; color: #3b2a05; background: var(--cf-alert); font-size: 11px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+
+.cf-foot { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--cf-navy-line); }
+.cf-note { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; padding: 6px 11px; color: var(--cf-side-muted); font-size: 11.5px; line-height: 1.35; }
+.cf-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #5fc597; box-shadow: 0 0 0 3px rgba(95, 197, 151, .16); margin: 0 6px; }
+.cf-logout:hover { color: #ffd3d3; }
+.cf-version { margin: 4px 11px 0; color: #59658a; font-size: 11px; }
+
+.cf-sidebar a:focus-visible, .cf-sidebar button:focus-visible, .cf-mobilebar a:focus-visible, .cf-mobilebar button:focus-visible { outline: 2px solid var(--cf-accent); outline-offset: 2px; }
+
+/* Menu recolhido (desktop) */
+html.cf-collapsed .cf-sidebar { padding-left: 10px; padding-right: 10px; }
+html.cf-collapsed .cf-brand { flex-direction: column; padding-left: 0; padding-right: 0; }
+html.cf-collapsed .cf-brand-text, html.cf-collapsed .cf-label { display: none; }
+html.cf-collapsed .cf-collapse .cf-ico { transform: rotate(180deg); }
+html.cf-collapsed .cf-item { justify-content: center; padding: 10px; }
+html.cf-collapsed .cf-item.is-active::before { left: -10px; }
+html.cf-collapsed .cf-pill { position: absolute; top: 3px; right: 2px; min-width: 18px; padding: 1px 5px; font-size: 10px; }
+html.cf-collapsed .cf-nav { gap: 4px; }
+html.cf-collapsed .cf-group { display: block; height: 1px; margin: 10px 10px; overflow: hidden; color: transparent; background: var(--cf-navy-line); }
+html.cf-collapsed .cf-note { justify-content: center; padding: 6px 0; }
+
+/* Barra superior e gaveta (celular e tablet) */
+.cf-mobilebar, .cf-scrim { display: none; }
+@media (max-width: 960px) {
+  html.cf-shell body { padding-left: 0 !important; }
+  html.cf-shell { --cf-side: 280px; }
+  .cf-sidebar { width: 280px; transform: translateX(-100%); box-shadow: none; }
+  html.cf-open .cf-sidebar { transform: translateX(0); box-shadow: 0 0 40px rgba(5, 12, 30, .35); }
+  html.cf-collapsed .cf-brand-text { display: flex; }
+  html.cf-collapsed .cf-label { display: block; }
+  html.cf-collapsed .cf-group { height: auto; margin: 16px 10px 6px; color: var(--cf-side-muted); background: none; }
+  html.cf-collapsed .cf-brand { flex-direction: row; }
+  html.cf-collapsed .cf-item { justify-content: flex-start; padding: 9px 11px; }
+  html.cf-collapsed .cf-pill { position: static; }
+  .cf-collapse { display: none; }
+  .cf-mobilebar {
+    position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 12px;
+    color: #fff; background: var(--cf-navy);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .cf-burger { width: 40px; height: 40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; color: #fff; background: transparent; cursor: pointer; }
+  .cf-burger:hover { background: var(--cf-navy-2); }
+  .cf-mobile-title { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-size: 14px; font-weight: 750; }
+  .cf-mobile-title .cf-mark { width: 30px; height: 30px; flex-basis: 30px; font-size: 11px; }
+  .cf-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(8, 15, 35, .45); }
+  html.cf-open .cf-scrim { display: block; }
+  /* O cabeçalho das aplicações deixa de ser fixo para não competir com a barra do menu. */
+  html.cf-shell .topbar, html.cf-shell body > header { position: static !important; padding-left: 16px !important; padding-right: 16px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.cf-shell body, .cf-sidebar, .cf-collapse .cf-ico { transition: none; }
+}
+@media print {
+  .cf-sidebar, .cf-mobilebar, .cf-scrim { display: none !important; }
+  html.cf-shell body { padding-left: 0 !important; }
+}
+
+/* Arrastar e soltar / colar arquivos (v2.1) */
+.cf-dropzone { position: relative; }
+html.cf-dragging .cf-dropzone::after {
+  content: attr(data-drop-label);
+  position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: 16px; border: 2px dashed #8da3df; border-radius: inherit;
+  color: #24407f; background: rgba(243, 246, 255, .92);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; font-weight: 750; text-align: center; pointer-events: none;
+}
+html.cf-dragging .cf-dropzone.cf-drop-over::after { border-color: #3157c8; border-style: solid; color: #fff; background: rgba(49, 87, 200, .9); }
+.cf-drop-flash { animation: cf-flash .9s ease; }
+@keyframes cf-flash { 0% { box-shadow: 0 0 0 0 rgba(49, 87, 200, .45); } 100% { box-shadow: 0 0 0 14px rgba(49, 87, 200, 0); } }
+
+.cf-toast {
+  position: fixed; left: 50%; bottom: 24px; z-index: 80; max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 16px; border-radius: 12px; color: #fff; background: #111d3b; box-shadow: 0 12px 30px rgba(8, 15, 35, .25);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; font-weight: 600; line-height: 1.4;
+  opacity: 0; transform: translate(-50%, 10px); pointer-events: none; transition: opacity .2s ease, transform .2s ease;
+}
+.cf-toast.is-show { opacity: 1; transform: translate(-50%, 0); }
+.cf-toast.is-error { background: #9b2f35; }
+@media (min-width: 961px) { .cf-toast { margin-left: calc(var(--cf-side) / 2); } }
+@media (prefers-reduced-motion: reduce) { .cf-drop-flash { animation: none; } .cf-toast { transition: none; } }
+
+/* Empresa: barra dentro da tela (v2.4) */
+.cf-pagebar {
+  grid-column: 1 / -1; position: relative; z-index: 15;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  margin: 0 0 16px; padding: 10px 14px; border: 1px solid #e1e7f0; border-radius: 14px; background: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.cf-pagebar-label { color: #64728a; font-size: 13px; font-weight: 700; }
+.cf-seg { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 11px; background: #eef2f8; }
+.cf-co { min-height: 34px; padding: 6px 16px; border: 0; border-radius: 8px; color: #46546d; background: transparent; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.cf-co:hover { color: #111d3b; background: rgba(255, 255, 255, .7); }
+.cf-co.is-on { color: #fff; background: #111d3b; }
+.cf-co:focus-visible, .cf-co-manage:focus-visible { outline: 2px solid #3157c8; outline-offset: 2px; }
+.cf-co-wrap { position: relative; margin-left: auto; }
+.cf-co-manage { min-height: 34px; padding: 6px 12px; border: 1px solid #dfe5ef; border-radius: 9px; color: #46546d; background: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cf-co-manage:hover { color: #111d3b; border-color: #c6d0e2; }
+.cf-co-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 280px; padding: 12px; border: 1px solid #dfe5ef; border-radius: 12px; background: #fff; box-shadow: 0 16px 36px rgba(15, 25, 50, .16); }
+.cf-co-pop[hidden] { display: none; }
+.cf-co-add { display: flex; gap: 6px; }
+.cf-co-input { flex: 1 1 auto; min-width: 0; min-height: 34px; padding: 6px 10px; border: 1px solid #d6deec; border-radius: 8px; font: inherit; font-size: 13px; }
+.cf-co-addbtn { min-height: 34px; padding: 6px 12px; border: 0; border-radius: 8px; color: #fff; background: #111d3b; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cf-co-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.cf-co-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 2px; border-top: 1px solid #f0f2f7; font-size: 13px; color: #17243a; }
+.cf-co-del { padding: 3px 8px; border: 0; border-radius: 6px; color: #9b2f35; background: transparent; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.cf-co-del:hover { background: #fdeeee; }
+.cf-co-del:disabled { color: #b8c0cd; cursor: default; background: none; }
+@media (max-width: 640px) {
+  .cf-co-wrap { margin-left: 0; }
+  .cf-co-pop { left: 0; right: auto; width: min(280px, calc(100vw - 40px)); }
+}
+
+.cf-modal { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: rgba(8, 15, 35, .55); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.cf-modal-box { width: min(420px, 100%); padding: 26px; border-radius: 18px; background: #fff; box-shadow: 0 24px 60px rgba(8, 15, 35, .35); text-align: center; }
+.cf-modal-box h2 { margin: 0 0 18px; color: #111d3b; font-size: 20px; letter-spacing: -.02em; }
+.cf-modal-options { display: grid; gap: 10px; }
+.cf-modal-options button { min-height: 50px; border: 1px solid #d6deec; border-radius: 12px; color: #111d3b; background: #f7f9fd; font: inherit; font-size: 16px; font-weight: 750; cursor: pointer; }
+.cf-modal-options button:hover, .cf-modal-options button:focus-visible { border-color: #3157c8; background: #eef2ff; outline: none; }
+.cf-modal-back { display: inline-block; margin-top: 16px; color: #64728a; font-size: 13px; }
+.main-grid > .cf-pagebar { margin-bottom: 0; }
+
+/* Muitas empresas (v2.5) */
+.cf-co-pick { display: flex; align-items: center; gap: 10px; }
+.cf-co-search { width: 280px; max-width: 60vw; min-height: 36px; padding: 6px 12px; border: 1px solid #cfd8e8; border-radius: 9px; color: #111d3b; background: #fff; font: inherit; font-size: 14px; font-weight: 700; }
+.cf-co-search:focus-visible { outline: 2px solid #3157c8; outline-offset: 1px; }
+.cf-co-count { color: #8a96ab; font-size: 12px; }
+.cf-co-add { align-items: flex-start; }
+textarea.cf-co-input { resize: vertical; min-height: 64px; }
+.cf-co-list { max-height: 260px; overflow-y: auto; }
+.cf-modal-search { width: 100%; min-height: 42px; margin-bottom: 12px; padding: 8px 12px; border: 1px solid #d6deec; border-radius: 10px; font: inherit; font-size: 15px; }
+.cf-modal-options { max-height: 52vh; overflow-y: auto; }
+.cf-modal-options button[hidden] { display: none; }

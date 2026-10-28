@@ -1,0 +1,13 @@
+V43 - CIELO CORRIGIDA
+
+Correção principal:
+- Corrigido o erro "row is not defined" que ocorria ao analisar a planilha.
+- O registro E usa o estabelecimento do próprio registro atual (r.estabelecimento).
+- O cabeçalho usa o primeiro estabelecimento apenas como campo estrutural; os registros D/E preservam o estabelecimento individual de cada título.
+
+Mantidas:
+- múltiplos títulos para Nota de Débito;
+- títulos "Valor cedido em negociação" não elegíveis para Nota de Débito;
+- autorização 006896 bloqueada;
+- último título parcial com saldo residual no CIELO04;
+- demais títulos preservam o valor correspondente ao processamento.

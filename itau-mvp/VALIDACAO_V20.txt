@@ -1,0 +1,24 @@
+MVP ITAÚ × DEALER — V20
+
+Separação preservada:
+- /itau-mvp/ = MVP de pagamentos, em desenvolvimento.
+- /itau-dealer/ = versão anterior de recebimentos/PDF/OCR, preservada sem substituição pelo MVP.
+
+Regras do MVP:
+- 1×1, 1×N, N×1 e N×N são possibilidades, não regras fixas por fornecedor.
+- agrupamento é recalculado em cada execução.
+- conciliação exige fechamento matemático Itaú = Dealer (tolerância de centavos).
+- nome/documento/data ajudam a localizar candidatos; não substituem o valor.
+- sem combinação válida, não força vínculo.
+- botão Analisar inicia desabilitado e só habilita quando há dados válidos nos dois lados.
+- tela vazia não inicia processamento.
+
+Casos sintéticos validados no motor:
+- Volkswagen 1×12 = R$ 1.034.212,00.
+- CEF R$ 22.503,63 sem combinação = Itaú sem Dealer.
+- IPOG 2×2.
+- Ouro Verde 2×2.
+- DEALERUP 83,75 × 73,90 = divergência.
+- SERPRO 3.836,00 × 383,60 = divergência.
+- PROTEÇÃO 856,00 × 85,60 = divergência.
+- N×1 e N×N genéricos sem regra fixa de fornecedor.

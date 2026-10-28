@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111d3b">
+  <title>Painel · Central Financeira</title>
+  <link rel="stylesheet" href="central.css?v=2.5">
+  <link rel="stylesheet" href="shell.css?v=2.5">
+  <script src="shell.js?v=2.5"></script>
+</head>
+<body class="dash">
+  <main class="dash-main" id="conteudo">
+    <header class="dash-head">
+      <div>
+        <h1>Painel</h1>
+        <p class="dash-today" id="today">—</p>
+      </div>
+      <div class="dash-head-actions">
+        <div class="seg" id="companyFilter" role="radiogroup" aria-label="Filtrar por empresa"></div>
+        <button type="button" class="dash-btn" id="refreshBtn">Atualizar</button>
+      </div>
+    </header>
+
+    <div id="emptyState" class="dash-empty" hidden>
+      <h2 id="emptyTitle">Nenhuma conferência registrada</h2>
+      <div class="dash-empty-links" id="emptyLinks"></div>
+    </div>
+
+    <section class="kpis" aria-label="Indicadores principais">
+      <article class="kpi-balance">
+        <div class="kpi-balance-top">
+          <h2>Quanto já fechou</h2>
+          <strong class="kpi-rate" id="kRate">—</strong>
+        </div>
+        <div class="ledger" role="img" id="kLedger" aria-label="Sem dados">
+          <span class="ledger-ok" id="kLedgerOk"></span><span class="ledger-pend" id="kLedgerPend"></span>
+        </div>
+        <div class="ledger-legend">
+          <span><i class="sw sw-ok"></i><b id="kOk">0</b> batem</span>
+          <span><i class="sw sw-pend"></i><b id="kPend">0</b> pendentes</span>
+        </div>
+      </article>
+
+      <article class="kpi-card">
+        <h2>Itens para tratar</h2>
+        <strong id="kPendBig">0</strong>
+        <p id="kPendSub"></p>
+      </article>
+      <article class="kpi-card">
+        <h2>Valor conferido</h2>
+        <strong id="kVolume">R$ 0,00</strong>
+        <p id="kVolumeSub"></p>
+      </article>
+      <article class="kpi-card">
+        <h2>Arquivos Cielo gerados</h2>
+        <strong id="kCielo">0</strong>
+        <p id="kCieloSub"></p>
+      </article>
+    </section>
+
+    <div class="dash-grid">
+      <section class="panel-x modules" aria-labelledby="modulesTitle">
+        <div class="panel-x-head"><h2 id="modulesTitle">Resultado de cada aplicação</h2></div>
+        <div id="moduleRows" class="module-rows"></div>
+      </section>
+
+      <aside class="side-col">
+        <section class="panel-x" aria-labelledby="pendTitle">
+          <div class="panel-x-head"><h2 id="pendTitle">O que precisa de atenção</h2></div>
+          <ul id="pendList" class="pend-list"></ul>
+        </section>
+        <section class="panel-x" aria-labelledby="actTitle">
+          <div class="panel-x-head"><h2 id="actTitle">Últimas conferências</h2></div>
+          <ol id="activity" class="activity"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel-x difal-period" id="difalPeriod" aria-labelledby="difalTitle" hidden>
+      <div class="panel-x-head"><h2 id="difalTitle">Dias conferidos · Banco Util</h2></div>
+      <div id="dayStrips"></div>
+      <div class="day-legend">
+        <span><i class="sw sw-ok"></i>Tudo bateu</span>
+        <span><i class="sw sw-pend"></i>Tem itens pendentes</span>
+        <span><i class="sw sw-none"></i>Ainda não conferido</span>
+      </div>
+    </section>
+
+    <footer class="dash-foot">
+      <button type="button" class="dash-btn dash-btn-quiet" id="clearIndicators">Limpar indicadores do painel</button>
+    </footer>
+  </main>
+
+  <script src="dashboard.js?v=2.5"></script>
+</body>
+</html>

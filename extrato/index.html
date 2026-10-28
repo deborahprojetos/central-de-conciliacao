@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extrato do mês · Central Financeira</title>
+<link rel="stylesheet" href="../ui-premium.css">
+<link rel="stylesheet" href="styles.css?v=1.4">
+<link rel="stylesheet" href="../shell.css?v=2.5">
+<script src="../shell.js?v=2.5"></script>
+</head>
+<body>
+<header class="ex-top">
+  <h1>Extrato do mês</h1>
+</header>
+
+<main class="ex-main">
+  <section class="ex-card fd-card" id="folderBox">
+    <div class="fd-head">
+      <div class="fd-title">
+        <span class="fd-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2h7.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z"/></svg></span>
+        <div><strong>Pasta de extratos</strong> <span id="folderName" class="fd-name" hidden></span><div id="folderStatus" class="fd-status" role="status" aria-live="polite"></div></div>
+      </div>
+      <div class="fd-actions">
+        <button type="button" id="folderConnect" class="ex-btn ex-primary">Conectar pasta</button>
+        <button type="button" id="folderAllow" class="ex-btn ex-primary" hidden>Permitir acesso à pasta</button>
+        <button type="button" id="folderRefresh" class="ex-btn" hidden>Atualizar agora</button>
+        <button type="button" id="folderCreate" class="ex-btn" hidden></button>
+        <button type="button" id="folderDisconnect" class="ex-btn ex-quiet" hidden>Desconectar</button>
+      </div>
+    </div>
+    <ul id="folderPending" class="fd-pending" hidden></ul>
+    <details id="folderDetails" class="fd-details" hidden>
+      <summary>Arquivos da pasta</summary>
+      <div class="ex-table-wrap"><table class="ex-table fd-table"><thead><tr><th>Arquivo</th><th>Empresa</th><th>Mês</th><th>Situação</th><th></th></tr></thead><tbody id="folderFiles"></tbody></table></div>
+    </details>
+  </section>
+
+  <section class="ex-card">
+    <div class="ex-import">
+      <label class="ex-drop">
+        <input id="pdfFile" type="file" accept=".pdf,.xlsx,.xlsm,.xls,.csv" hidden>
+        <span class="ex-drop-ico">PDF<br>XLS</span>
+        <span><strong>Selecionar extrato (PDF ou Excel)</strong><small id="fileName">Nenhum arquivo selecionado</small></span>
+      </label>
+      <label class="ex-field" id="monthField" hidden>
+        <span>Mês salvo</span>
+        <select id="monthSelect"></select>
+      </label>
+    </div>
+
+    <div id="preview" class="ex-preview" hidden>
+      <div class="ex-preview-info">
+        <strong id="previewTitle">—</strong>
+        <span id="previewCols">—</span>
+      </div>
+      <label class="ex-field">
+        <span>Mês do extrato</span>
+        <input id="previewMonth" type="month">
+      </label>
+      <div class="ex-preview-actions">
+        <button type="button" id="saveImport" class="ex-btn ex-primary">Salvar extrato</button>
+        <button type="button" id="cancelImport" class="ex-btn">Cancelar</button>
+      </div>
+    </div>
+    <div id="importMsg" class="ex-msg" role="status" hidden></div>
+  </section>
+
+  <section id="workArea" hidden>
+    <div class="ex-card">
+      <div class="ex-card-head">
+        <h2>Somar</h2>
+        <label class="ex-check"><input type="checkbox" id="ignoreSaldo" checked> Ignorar linhas de saldo</label>
+      </div>
+      <div id="sumOptions" class="ex-chips" role="group" aria-label="Campos para somar"></div>
+      <div id="sumTotals" class="ex-totals"></div>
+    </div>
+
+    <div class="ex-card">
+      <div class="ex-toolbar">
+        <label class="ex-field"><span>Dia</span><select id="daySelect"></select></label>
+        <label class="ex-field"><span>Tipo</span>
+          <select id="typeFilter">
+            <option value="">Entradas e saídas</option>
+            <option value="entrada">Entradas</option>
+            <option value="saida">Saídas</option>
+          </select>
+        </label>
+        <label class="ex-field"><span>Status</span>
+          <select id="statusFilter">
+            <option value="">Todos</option>
+            <option value="Pendente">Pendente</option>
+            <option value="Em análise">Em análise</option>
+            <option value="-">Sem status</option>
+          </select>
+        </label>
+        <label class="ex-field"><span>Responsável</span>
+          <select id="respFilter"></select>
+        </label>
+        <label class="ex-field ex-grow"><span>Buscar</span><input id="search" type="search" placeholder="Descrição ou responsável"></label>
+        <div class="ex-counts" id="statusCounts"></div>
+      </div>
+      <div class="ex-table-wrap">
+        <table class="ex-table">
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+          <tfoot id="tfoot"></tfoot>
+        </table>
+        <div id="emptyRows" class="ex-empty" hidden>Nenhum lançamento nesta seleção.</div>
+      </div>
+      <div class="ex-foot">
+        <span id="rowCount"></span>
+        <button type="button" id="deleteMonth" class="ex-btn ex-danger">Excluir este mês</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<datalist id="respList"></datalist>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="core.js?v=1.4"></script>
+<script src="app.js?v=1.4"></script>
+<script src="folder.js?v=1.0"></script>
+</body>
+</html>

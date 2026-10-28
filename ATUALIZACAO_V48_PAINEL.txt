@@ -1,0 +1,177 @@
+V48 - CENTRAL FINANCEIRA 2.0 · MENU LATERAL E PAINEL DE INDICADORES
+
+O que mudou
+- Página inicial (index.html) virou um painel com indicadores:
+  taxa de conciliação, pendências em aberto, volume conferido, lotes CIELO04 gerados,
+  situação por aplicação, pendências a tratar, atividade recente e período DIFAL por data.
+- Menu lateral único em todas as páginas (painel + 4 aplicações), com selo de pendências,
+  opção de recolher (desktop) e gaveta com botão de menu (celular/tablet).
+- O link "← Central" das aplicações foi substituído pelo menu lateral. "Sair" fica no rodapé do menu.
+
+Arquivos novos
+- shell.js       menu lateral + registro dos resultados de cada aplicação
+- shell.css      estilos do menu lateral
+- dashboard.js   cálculo e exibição dos indicadores do painel
+- central.css    reescrito para o painel
+
+Arquivos alterados
+- index.html (raiz)            novo painel
+- cielo/index.html, difal/index.html, itau-mvp/index.html, itau-dealer/index.html
+  apenas 2 linhas no <head>: shell.css e shell.js. Nenhum app.js/core.js foi alterado.
+
+De onde vêm os indicadores
+- DIFAL: lido do histórico que a própria aplicação já salva no navegador.
+- Itaú pagamentos e Itaú completa: o shell lê os cartões de resultado ao final de cada análise.
+- CIELO04: o shell lê a conferência e conta cada clique em "Gerar CIELO04.TXT".
+- Tudo fica no localStorage deste navegador (chaves "cf:*"). Nada é enviado a servidor.
+  Em outro computador ou navegador o painel começa vazio.
+
+Publicação (Cloudflare Pages via GitHub)
+- Substitua os arquivos do repositório por este pacote e faça o commit.
+- _headers não precisou mudar: os scripts novos são arquivos próprios (sem script inline).
+
+V48.1 - ITAÚ × DEALER · ANÁLISE DE PAGAMENTOS
+- O quadro "Pagamento no Itaú sem correspondência no Dealer" passa a ser o primeiro da análise,
+  seguido de "Consta no Itaú e no Dealer" e "Valor encontrado: revisar o vínculo".
+- Cache-busting do itau-mvp/app.js atualizado (?v=48.1).
+
+V48.2 - CIELO04 · CAMPOS DE PARCELA (registro E)
+Comparação com o CIELO04 original da Cielo (CIELO04D_0002398818_20261022...):
+- Posições 18-19 (parcela atual) e 20-21 (total) já estavam no lugar certo.
+- Corrigido: a parcela 01 de venda parcelada saía com tipo 02 (posições 28-29, 556-557
+  e tipo do registro D na 150-151). Agora sai 03, como no arquivo da Cielo.
+- Corrigido: lançamentos sem parcela (crédito à vista, valor cedido, cancelamento,
+  aluguel) saíam como 01/01. Agora saem 00/00, como no arquivo da Cielo.
+- O total de parcelas passa a vir da coluna "Quantidade total de parcelas" da planilha.
+  Se a coluna não existir, o total é estimado e a tela mostra um aviso.
+- Validado com Negocição_Recebiveis_Cielo_Detalhe_131026: 7.165 linhas,
+  0 fora da regra; nenhuma outra posição do arquivo mudou.
+- Cache-busting do módulo Cielo atualizado (?v=48.2).
+
+V48.3 - CIELO04 · BANDEIRA
+- Código da bandeira lido da coluna "Bandeira" da planilha:
+  Visa = 001, Mastercard = 002, Elo = 007 (códigos confirmados no CIELO04 da Cielo).
+- Gravado no registro E (posições 12-14) e no registro D (posições 54-56).
+- Bandeira fora dessa lista continua com 001 e a tela mostra um aviso para conferência.
+- Aluguel de máquina mantido como estava (tipo 02), por se tratar de antecipação.
+- Validado: 7.165 linhas com a bandeira correta; regra de parcela da V48.2 mantida.
+- Cache-busting do módulo Cielo atualizado (?v=48.3).
+
+V48.4 - ARRASTAR E SOLTAR / COLAR ARQUIVOS EM TODA A CENTRAL (shell 2.1)
+- Todos os campos de arquivo aceitam arrastar e soltar sobre o quadro do campo:
+  Cielo (planilha), DIFAL (planilha Banco Util e backup .json),
+  Itaú pagamentos (Excel do Dealer), Itaú completa (arquivo Itaú, arquivo/pasta auxiliar,
+  Excel do Dealer).
+- Ctrl+V cola um arquivo copiado no Explorer. Colar texto (grade do Excel) nos campos
+  de texto continua funcionando normalmente.
+- Ao arrastar, os quadros que aceitam arquivo ficam destacados com o que pode ser solto.
+- Arquivo em formato errado é recusado com aviso; soltar fora dos quadros não abre o
+  arquivo no navegador (não perde a página).
+- Na pasta auxiliar do Itaú, é possível soltar a pasta inteira VEICULOS_arquivos.
+- Itaú completa: removido código de um quadro de arraste antigo que não existia mais na
+  página e gerava erro no console (app.js?v=48.4).
+- Implementado no shell.js/shell.css (v2.1); a lógica das aplicações não mudou.
+
+V48.5 - NOMES DO MENU E TÍTULOS DO PAINEL (shell 2.2)
+Menu lateral e painel:
+- DIFAL · Banco Util × Dealer      → Conciliação Banco Util
+- Itaú · Pagamentos                → Análise de pagamentos
+- Itaú · Recebimentos e pagamentos → Conciliação Cobrança
+- Gerador CIELO04                  → Antecipação Cielo (grupo "Cartões")
+Títulos do painel reescritos em linguagem direta:
+- Taxa de conciliação → Quanto já fechou
+- Pendências em aberto → Itens para tratar
+- Volume conferido → Valor conferido
+- Lotes CIELO04 gerados → Arquivos Cielo gerados
+- Situação por aplicação → Resultado de cada aplicação
+- Pendências a tratar → O que precisa de atenção
+- Atividade recente → Últimas conferências
+- Período DIFAL → Dias conferidos · Banco Util
+Os títulos dentro de cada aplicação não foram alterados.
+
+V48.6 - EMPRESAS (VEÍCULOS, MOTORS, FRANCE) E CENTRAL SEM TEXTOS EXPLICATIVOS (shell 2.3)
+Empresas
+- Cada aplicação tem o seletor Veículos / Motors / France no menu lateral, logo abaixo
+  do nome da aplicação. Na primeira vez em cada aplicação, a Central pede a empresa.
+- A empresa escolhida fica salva por aplicação.
+- Conciliação Banco Util: um período salvo por empresa. Trocar a empresa abre o período
+  daquela empresa. O período já salvo antes desta versão é vinculado à primeira empresa
+  escolhida.
+- Demais aplicações: o resultado de cada conferência é registrado na empresa escolhida.
+  Se a empresa for trocada logo após a conferência, o resultado passa para a nova empresa.
+- Painel: filtro Todas / Veículos / Motors / France. Em "Todas", cada aplicação mostra
+  quanto cada empresa tem pendente; "O que precisa de atenção" e "Últimas conferências"
+  mostram a empresa; "Dias conferidos · Banco Util" mostra uma faixa por empresa.
+- Conciliação Banco Util no painel mostra "títulos não baixados no Dealer".
+- Links do painel abrem a aplicação já na empresa filtrada.
+Textos explicativos removidos
+- Painel, menu lateral e as quatro aplicações: subtítulos, instruções, quadros "Como
+  funciona", "Regras", "Ordem obrigatória", rodapés e dicas de arrastar.
+- Mantidos: títulos, rótulos de campos, botões, mensagens de status/erro, legendas de
+  cores e a confirmação da Nota de Débito na Antecipação Cielo (texto encurtado).
+Cache-busting: shell/central/dashboard v2.3; difal/app.js, itau-mvp/app.js e
+itau-dealer/styles.css ?v=48.6.
+
+V48.7 - EMPRESA NA TELA, TÍTULOS, INDICADORES ZERADOS E EXTRATO DO MÊS (shell 2.4)
+1. Seletor de empresa
+- Saiu do menu lateral e fica no topo de cada tela de análise (barra "Empresa").
+- Botão "Empresas": adicionar e remover empresas. Lista inicial: Veículos, France,
+  Motors e Suzuki. A lista vale para a Central toda (aplicações e filtro do painel).
+  Empresa removida mantém os dados; volta ao ser adicionada com o mesmo nome.
+2. Títulos das páginas iguais ao menu
+- Conciliação Banco Util, Análise de pagamentos, Conciliação Cobrança, Antecipação Cielo
+  e Extrato do mês (título da aba do navegador também).
+3. Indicadores zerados a partir de 28/10/2026 11:14 (Brasília)
+- Na primeira abertura desta versão, os resumos anteriores do painel são apagados.
+- Conciliação Banco Util: o painel só conta dias conferidos a partir desse horário.
+  Os períodos salvos dentro da aplicação não foram apagados.
+4. Novo menu: Extrato do mês (pasta extrato/)
+- Importa o extrato do mês em PDF (arrastar, Ctrl+V ou botão). Lê data, descrição e as
+  colunas de valor do PDF; confirma o mês antes de salvar.
+- Somar: escolha das colunas a somar (ex.: Entradas, Saídas). Coluna única com sinal
+  vira "entradas" e "saídas". Linhas de saldo ficam fora da soma (opção).
+- Filtro por dia, por status e busca; total da seleção no rodapé da tabela.
+- Em cada lançamento: Status (Pendente / Em análise) e Responsável (digitado, com
+  sugestão dos nomes já usados). Salvo por empresa e por mês, fica fixo ao recarregar
+  e ao reimportar o mesmo mês.
+- Painel: pendentes e em análise entram em "Itens para tratar" e "O que precisa de
+  atenção" (fora da taxa "Quanto já fechou").
+- PDF só imagem (escaneado) não é lido: precisa ter texto selecionável.
+
+V48.8 - EXTRATO DO MÊS · FILTROS E SAÍDAS COM "-"
+- Novos filtros: Tipo (Entradas / Saídas) e Responsável (nomes usados no mês e
+  "Sem responsável"), ao lado de Dia, Status (Pendente / Em análise / Sem status) e Busca.
+- Os filtros se combinam, ficam salvos por empresa e voltam ao reabrir a tela.
+- Saída reconhecida pelo sinal "-" do extrato, em todas as formas: -1.234,56 · 1.234,56- ·
+  - 1.234,56 · R$ -1.234,56 · -R$ 1.234,56 (ou pelo nome da coluna Saídas/Débitos).
+- Coluna única de valor: botões de soma "Entradas" e "Saídas".
+- Ao digitar o responsável, a tabela não é redesenhada (o cursor segue para o próximo campo).
+
+V48.9 - EXTRATO DO MÊS · PASTA CONECTADA, EXCEL E 47 EMPRESAS (shell 2.5)
+Pasta conectada (Chrome e Edge no computador)
+- "Conectar pasta" no Extrato do mês: escolher uma vez a pasta
+  Desktop > ROTINA > CONCILIAÇÕES. A Central guarda o acesso e lê a pasta ao abrir a
+  tela e a cada 2 minutos enquanto ela estiver aberta (inclui subpastas).
+- Ao reabrir o navegador, se o Chrome pedir, clicar em "Permitir acesso à pasta".
+- Empresa de cada arquivo: conta lembrada → nome do arquivo (VEICULOS, MOTORS., FRANCE,
+  "VEICULOS OUTUBRO"...) → nome da subpasta. Mês: datas do próprio extrato.
+- Arquivo sem empresa ou mês identificado fica em "aguardando", com campos de empresa e
+  mês, "Lembrar" (próximos arquivos com o mesmo nome/conta vão direto) e "Ignorar".
+- "Criar empresas pelos nomes dos arquivos": cadastra de uma vez as empresas que ainda
+  não existem (ex.: ACM AGRO) e importa os arquivos delas.
+- Arquivo alterado na pasta é reimportado; status e responsáveis são mantidos.
+- Arquivos que não são extrato (sem data e valor) são ignorados.
+- Duplicidade: arquivo igual a outro não é somado; versão mais completa substitui a
+  anterior (marcações levadas junto); arquivo que repete muitos lançamentos de outro
+  fica aguardando decisão ("Importar mesmo assim" / "Ignorar").
+- "Arquivos da pasta": lista de todos os arquivos com empresa, mês e situação.
+Excel
+- Extrato em Excel (.xlsx, .xls, .xlsm, .csv) além de PDF, na pasta e no botão.
+- Cabeçalho localizado por nome (Data, Lançamento/Histórico, Valor, Crédito, Débito,
+  Saldo). Coluna Débito/Saída sempre negativa; Crédito/Entrada sempre positiva.
+- Vários arquivos da mesma empresa no mesmo mês (outra conta) somam no mesmo mês, com a
+  coluna "Arquivo" na tabela.
+Muitas empresas
+- Acima de 6 empresas, a barra de empresa vira um campo com busca; o filtro do painel
+  vira uma lista; a janela de escolha ganha busca.
+- "Empresas": cadastro em lote (uma por linha).
