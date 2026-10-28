@@ -1,7 +1,10 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'difal_conciliacao_final_1_0';
+  // V48.6: um período salvo por empresa (Veículos, Motors, France), escolhida no menu lateral.
+  const STORAGE_KEY = (window.CentralShell && window.CentralShell.storageKey)
+    ? window.CentralShell.storageKey('difal_conciliacao_final_1_0')
+    : 'difal_conciliacao_final_1_0';
   const Core = window.DifalCore;
   const $ = (id) => document.getElementById(id);
 
@@ -214,13 +217,13 @@
     els.bankOriginNotice.classList.remove('hidden');
     if (bankRuntimeSource === 'imported') {
       setBadge(els.bankOriginBadge, 'PLANILHA CARREGADA AGORA', 'success');
-      els.bankOriginText.textContent = 'Planilha lida. Selecione a data e cole a relação correspondente do Dealer.';
+      els.bankOriginText.textContent = '';
     } else if (bankRuntimeSource === 'backup') {
       setBadge(els.bankOriginBadge, 'BACKUP RESTAURADO', 'warning');
-      els.bankOriginText.textContent = 'Base e análises recuperadas do arquivo de backup nesta sessão.';
+      els.bankOriginText.textContent = '';
     } else {
       setBadge(els.bankOriginBadge, 'BASE RESTAURADA DO NAVEGADOR', 'neutral');
-      els.bankOriginText.textContent = 'Base recuperada do último período salvo neste navegador. Selecione outra planilha para carregar um novo período.';
+      els.bankOriginText.textContent = '';
     }
 
     setBadge(els.bankStatusBadge, bankRuntimeSource === 'restored' ? 'Base restaurada' : 'Base carregada', bankRuntimeSource === 'restored' ? 'neutral' : 'success');

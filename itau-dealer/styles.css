@@ -168,3 +168,4 @@ footer { text-align: center; color: #7a8493; font-size: 12px; padding: 0 20px 28
   .toolbar-actions input { width: 100%; }
   .table-footer { flex-direction: column; }
 }
+.container > .input-grid:first-child { margin-top: 0; }

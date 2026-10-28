@@ -8,8 +8,8 @@
   <title>DIFAL | Banco Util × Dealer</title>
   <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="../ui-premium.css">
-<link rel="stylesheet" href="../shell.css?v=2.1">
-<script src="../shell.js?v=2.1"></script>
+<link rel="stylesheet" href="../shell.css?v=2.3">
+<script src="../shell.js?v=2.3"></script>
 </head>
 <body>
   <header class="topbar">
@@ -17,10 +17,8 @@
       <div>
         <p class="eyebrow">FINANCEIRO • DIFAL</p>
         <h1>Conciliação Banco Util × Dealer</h1>
-        <p class="subtitle">Conferência individual por data, número do documento e valor.</p>
       </div>
       <div class="top-actions">
-        <span class="privacy-badge"><span class="dot"></span>Processamento no navegador</span>
         <span class="version-badge">DIFAL · 1.0.2</span><nav class="central-nav" aria-label="Navegação da Central"><a href="../">← Central</a><a href="/__logout">Sair</a></nav>
       </div>
     </div>
@@ -50,7 +48,6 @@
         <span class="file-icon">XLSX</span>
         <span>
           <strong>Selecionar planilha do período</strong>
-          <small>Leitura: Data do pagamento, Nº do documento e Valor total.</small>
         </span>
       </label>
 
@@ -78,15 +75,14 @@
 
       <label class="check-row">
         <input id="emptyDealerCheck" type="checkbox" />
-        <span><strong>O Dealer não possui nenhum lançamento nesta data</strong><small>Use apenas quando você confirmou que a relação do dia está vazia.</small></span>
+        <span><strong>O Dealer não possui nenhum lançamento nesta data</strong></span>
       </label>
 
       <label class="field-label textarea-label" for="dealerText">
         Cole aqui a tabela copiada do Dealer
         <span id="dealerParsedInfo">0 linhas reconhecidas</span>
       </label>
-      <textarea id="dealerText" rows="12" spellcheck="false" placeholder="Cole a relação do Dealer exatamente como ela vem da tela, com ou sem cabeçalho."></textarea>
-      <p class="helper">O campo Nº/Parcela é convertido automaticamente: <strong>76563/1 → 76563</strong>. Cada linha do Dealer só pode conciliar uma linha do Banco Util.</p>
+      <textarea id="dealerText" rows="12" spellcheck="false" placeholder="Cole aqui"></textarea>
 
       <div id="dealerWarning" class="alert warning hidden"></div>
       <details id="rejectedDetails" class="diagnostic hidden">
@@ -118,7 +114,6 @@
       <div class="section-title-row">
         <div>
           <h3>Somente as diferenças</h3>
-          <p class="muted">Registros com status OK ficam fora desta tabela.</p>
         </div>
         <div class="filter-pills" role="group" aria-label="Filtro de diferenças">
           <button class="pill active" data-filter="ALL">Todas</button>
@@ -143,7 +138,6 @@
         <div>
           <p class="section-kicker">CONTROLE DO PERÍODO</p>
           <h2 id="history-title">Status por data</h2>
-          <p class="muted">Clique em uma data para abrir novamente o resultado já salvo.</p>
         </div>
         <div class="history-actions">
           <button id="exportPeriodBtn" class="button secondary" type="button">Exportar período</button>
@@ -168,12 +162,12 @@
     </section>
   </main>
 
-  <footer class="footer"><div class="container">DIFAL • Conciliação Banco Util × Dealer • v1.0.2 • Dados de trabalho armazenados somente neste navegador.</div></footer>
+  <footer class="footer"><div class="container">DIFAL • v1.0.2</div></footer>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="core.js?v=1.0.2"></script>
-  <script src="app.js?v=1.0.2"></script>
+  <script src="app.js?v=48.6"></script>
 
 
 

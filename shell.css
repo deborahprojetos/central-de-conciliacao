@@ -111,7 +111,6 @@ html.cf-collapsed .cf-note { justify-content: center; padding: 6px 0; }
 
 /* Arrastar e soltar / colar arquivos (v2.1) */
 .cf-dropzone { position: relative; }
-.cf-drop-hint { margin: 8px 0 0; color: #7a879c; font-size: 12px; line-height: 1.4; }
 html.cf-dragging .cf-dropzone::after {
   content: attr(data-drop-label);
   position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
@@ -134,3 +133,29 @@ html.cf-dragging .cf-dropzone.cf-drop-over::after { border-color: #3157c8; borde
 .cf-toast.is-error { background: #9b2f35; }
 @media (min-width: 961px) { .cf-toast { margin-left: calc(var(--cf-side) / 2); } }
 @media (prefers-reduced-motion: reduce) { .cf-drop-flash { animation: none; } .cf-toast { transition: none; } }
+
+/* Empresa (v2.3) */
+.cf-company { display: flex; gap: 4px; margin: 4px 0 8px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, .06); }
+.cf-co { flex: 1 1 0; min-width: 0; min-height: 30px; padding: 4px 6px; border: 0; border-radius: 7px; color: var(--cf-side-text); background: transparent; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-co:hover { color: #fff; background: rgba(255, 255, 255, .07); }
+.cf-co.is-on { color: var(--cf-navy); background: #fff; }
+.cf-co-short { display: none; }
+html.cf-collapsed .cf-company { flex-direction: column; margin: 2px 0 8px; padding: 2px; }
+html.cf-collapsed .cf-co-full { display: none; }
+html.cf-collapsed .cf-co-short { display: inline; }
+html.cf-collapsed .cf-co { min-height: 26px; padding: 2px; }
+@media (max-width: 960px) {
+  html.cf-collapsed .cf-company { flex-direction: row; margin: 4px 0 8px; padding: 3px; }
+  html.cf-collapsed .cf-co-full { display: inline; }
+  html.cf-collapsed .cf-co-short { display: none; }
+}
+.cf-mobile-co { margin-left: auto; padding: 4px 10px; border-radius: 999px; color: var(--cf-navy); background: #fff; font-size: 12px; font-weight: 800; }
+.cf-mobile-co:empty { display: none; }
+
+.cf-modal { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: rgba(8, 15, 35, .55); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.cf-modal-box { width: min(420px, 100%); padding: 26px; border-radius: 18px; background: #fff; box-shadow: 0 24px 60px rgba(8, 15, 35, .35); text-align: center; }
+.cf-modal-box h2 { margin: 0 0 18px; color: #111d3b; font-size: 20px; letter-spacing: -.02em; }
+.cf-modal-options { display: grid; gap: 10px; }
+.cf-modal-options button { min-height: 50px; border: 1px solid #d6deec; border-radius: 12px; color: #111d3b; background: #f7f9fd; font: inherit; font-size: 16px; font-weight: 750; cursor: pointer; }
+.cf-modal-options button:hover, .cf-modal-options button:focus-visible { border-color: #3157c8; background: #eef2ff; outline: none; }
+.cf-modal-back { display: inline-block; margin-top: 16px; color: #64728a; font-size: 13px; }

@@ -145,3 +145,29 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--blue); outline-
   .dash-foot { flex-direction: column; align-items: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { .ledger-ok, .ledger-pend { transition: none; } }
+
+/* v2.3 · filtro por empresa */
+.dash-today { margin-top: 6px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.seg-btn { min-height: 32px; padding: 6px 14px; border: 0; border-radius: 9px; color: var(--muted); background: transparent; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.seg-btn:hover { color: var(--navy); background: #f3f6fc; }
+.seg-btn.is-on { color: #fff; background: var(--navy); }
+.kpi-balance-top { align-items: center; }
+.co-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; color: #34466f; background: #e9eef8; font-size: 11px; font-weight: 750; vertical-align: 1px; }
+.mod-split { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; }
+.mod-split a { color: var(--muted); text-decoration: none; }
+.mod-split a:hover { color: var(--navy); }
+.mod-split .co-tag { margin-left: 0; margin-right: 2px; }
+.mod-row.is-empty .mod-title a { color: #6b778d; }
+.day-group + .day-group { margin-top: 16px; padding-top: 14px; border-top: 1px solid #edf0f5; }
+.day-group-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.day-group-head strong { color: var(--navy); font-size: 14px; }
+.day-group-head span { color: var(--muted); font-size: 12.5px; }
+.day-group-head .dash-link { margin-left: auto; }
+.pend-list strong .co-tag { margin-left: 4px; }
+@media (max-width: 640px) {
+  .dash-head-actions { flex-wrap: wrap; }
+  .seg { width: 100%; }
+  .seg-btn { flex: 1 1 0; padding: 6px 4px; }
+}
+.activity strong .co-tag { display: inline-block; margin-top: 0; color: #34466f; font-size: 11px; }

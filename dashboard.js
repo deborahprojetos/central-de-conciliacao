@@ -1,4 +1,4 @@
-/* Central Financeira · Painel de indicadores (v2.0) */
+/* Central Financeira · Painel de indicadores (v2.3 · filtro por empresa) */
 (function () {
   'use strict';
 
@@ -10,11 +10,12 @@
   var brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   var brlCompact = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 2 });
   var int = new Intl.NumberFormat('pt-BR');
+
   var MODULE_INFO = {
-    difal: { name: 'DIFAL · Banco Util × Dealer', tone: 'difal', mark: 'DF' },
-    'itau-mvp': { name: 'Itaú · Pagamentos', tone: 'itau', mark: 'IP' },
-    'itau-dealer': { name: 'Itaú · Recebimentos e pagamentos', tone: 'itau', mark: 'IC' },
-    cielo: { name: 'Gerador CIELO04', tone: 'cielo', mark: 'C04' }
+    difal: { name: 'Conciliação Banco Util', tone: 'difal', mark: 'BU' },
+    'itau-mvp': { name: 'Análise de pagamentos', tone: 'itau', mark: 'AP' },
+    'itau-dealer': { name: 'Conciliação Cobrança', tone: 'itau', mark: 'CC' },
+    cielo: { name: 'Antecipação Cielo', tone: 'cielo', mark: 'AC' }
   };
 
   function esc(v) {
@@ -22,10 +23,7 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function href(id) {
-    var m = Shell.MODULES.filter(function (x) { return x.id === id; })[0];
-    return m ? Shell.BASE + m.path : Shell.BASE;
-  }
+  function plural(n, one, many) { return int.format(n) + ' ' + (n === 1 ? one : many); }
   function ago(iso) {
     if (!iso) return '';
     var d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
@@ -36,171 +34,265 @@
     if (diff < 86400 * 7) { var n = Math.floor(diff / 86400); return 'há ' + n + (n === 1 ? ' dia' : ' dias'); }
     return d.toLocaleDateString('pt-BR');
   }
-  function fullDate(iso) {
-    var d = new Date(iso);
-    return isNaN(d) ? '' : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  function fullDate(iso) { var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }); }
+  function toKey(br) { var m = String(br).match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? Number(m[3] + m[2] + m[1]) : 0; }
+
+  /* ---------------- Filtro ---------------- */
+  var filter = Store.get('cf:filter', 'all');
+  if (filter !== 'all' && !Shell.COMPANIES.some(function (c) { return c.id === filter; })) filter = 'all';
+  function companiesInScope() {
+    return filter === 'all' ? Shell.COMPANIES.map(function (c) { return c.id; }).concat([null]) : [filter];
   }
-  function plural(n, one, many) { return int.format(n) + ' ' + (n === 1 ? one : many); }
+  function href(id, company) {
+    var m = Shell.MODULES.filter(function (x) { return x.id === id; })[0];
+    var base = m ? Shell.BASE + m.path : Shell.BASE;
+    return company ? base + '#empresa=' + company : base;
+  }
 
-  /* ---------------- Coleta ---------------- */
-  function collect() {
-    var out = { modules: {}, activity: [], days: [] };
-
-    // DIFAL: lido diretamente do histórico salvo pela própria aplicação.
-    var ds = Shell.difalState();
-    if (ds) {
-      var dates = [];
-      ds.bankRows.forEach(function (r) { if (r.date && dates.indexOf(r.date) === -1) dates.push(r.date); });
-      dates.sort(function (a, b) { return toKey(a) - toKey(b); });
-      var ok = 0, div = 0, miss = 0, extra = 0, value = 0, lastAt = '', analyzed = 0, pendingDays = 0;
-      dates.forEach(function (date) {
-        var a = ds.analyses[date];
-        var s = a && a.summary;
-        if (s) {
-          analyzed++;
-          ok += s.exactCount || 0; div += s.divergenceCount || 0; miss += s.missingCount || 0; extra += s.extraDealerCount || 0;
-          value += (s.bankTotalCents || 0) / 100;
-          var p = (s.divergenceCount || 0) + (s.missingCount || 0);
-          if (p) pendingDays++;
-          if (a.analyzedAt > lastAt) lastAt = a.analyzedAt;
-          out.activity.push({ module: 'difal', at: a.analyzedAt, kind: p ? 'warn' : 'ok', text: 'Dia ' + date + ': ' + (p ? plural(p, 'pendência', 'pendências') : 'sem pendências') });
-          out.days.push({ date: date, state: p ? 'pend' : 'ok', detail: plural(s.exactCount || 0, 'OK', 'OK') + ', ' + plural(s.divergenceCount || 0, 'divergência', 'divergências') + ', ' + plural(s.missingCount || 0, 'sem baixa no Dealer', 'sem baixa no Dealer') });
-        } else {
-          out.days.push({ date: date, state: 'none', detail: 'Ainda não analisada' });
-        }
-      });
-      if (dates.length) {
-        out.modules.difal = {
-          at: lastAt, ok: ok, pending: div + miss, value: value,
-          facts: [analyzed + ' de ' + dates.length + ' datas analisadas', plural(div, 'divergência', 'divergências'), plural(miss, 'documento sem baixa', 'documentos sem baixa')],
-          pendText: div + miss ? plural(div, 'divergência', 'divergências') + ' e ' + plural(miss, 'documento sem baixa no Dealer', 'documentos sem baixa no Dealer') + ' em ' + plural(pendingDays, 'data', 'datas') : '',
-          dates: dates.length, analyzed: analyzed, pendingDays: pendingDays
-        };
+  /* ---------------- Regras de cada aplicação ---------------- */
+  var SPEC = {
+    difal: {
+      fields: ['dates', 'analyzed', 'ok', 'div', 'miss', 'value', 'pendingDays'],
+      ok: function (d) { return d.ok; },
+      pending: function (d) { return d.div + d.miss; },
+      value: function (d) { return d.value; },
+      facts: function (d) {
+        return [plural(d.miss, 'título não baixado no Dealer', 'títulos não baixados no Dealer'),
+          plural(d.div, 'divergência de valor', 'divergências de valor'),
+          d.analyzed + ' de ' + d.dates + ' dias conferidos'];
+      },
+      pend: function (d) {
+        if (!(d.div + d.miss)) return '';
+        return plural(d.miss, 'título não baixado no Dealer', 'títulos não baixados no Dealer') + ' · ' + plural(d.div, 'divergência', 'divergências');
       }
+    },
+    'itau-mvp': {
+      fields: ['itauCount', 'itauValue', 'ok', 'pending', 'missing', 'dealerCount', 'dealerValue'],
+      ok: function (d) { return d.ok; },
+      pending: function (d) { return d.pending; },
+      value: function (d) { return d.itauValue; },
+      facts: function (d) { return [plural(d.itauCount, 'pagamento Itaú', 'pagamentos Itaú'), plural(d.missing, 'não localizado no Dealer', 'não localizados no Dealer')]; },
+      pend: function (d) { return d.pending ? plural(d.pending, 'pendente', 'pendentes') + (d.missing ? ' · ' + plural(d.missing, 'não localizado', 'não localizados') : '') : ''; }
+    },
+    'itau-dealer': {
+      fields: ['itauCount', 'itauValue', 'ok', 'pending', 'missing', 'review'],
+      ok: function (d) { return d.ok; },
+      pending: function (d) { return d.pending; },
+      value: function (d) { return d.itauValue; },
+      facts: function (d) {
+        var f = [plural(d.itauCount, 'lançamento Itaú', 'lançamentos Itaú'), plural(d.missing, 'não localizado', 'não localizados')];
+        if (d.review) f.push(plural(d.review, 'para revisão', 'para revisão'));
+        return f;
+      },
+      pend: function (d) { return d.pending ? plural(d.pending, 'divergência', 'divergências') + (d.missing ? ' · ' + plural(d.missing, 'não localizada', 'não localizadas') : '') : ''; }
+    },
+    cielo: {
+      fields: ['titles', 'totalClear', 'cielo04', 'noteFee', 'files'],
+      ok: function () { return 0; },
+      pending: function () { return 0; },
+      value: function (d) { return d.totalClear; },
+      facts: function (d) { return [plural(d.titles, 'título', 'títulos'), 'CIELO04 ' + brl.format(d.cielo04), 'Nota de débito ' + brl.format(d.noteFee)]; },
+      pend: function () { return ''; }
     }
+  };
 
-    ['itau-mvp', 'itau-dealer'].forEach(function (id) {
-      var snap = Store.get('cf:latest:' + id, null);
-      if (!snap || !snap.data) return;
-      var d = snap.data;
-      var facts = [plural(d.itauCount || 0, 'lançamento Itaú', 'lançamentos Itaú'), plural(d.missing || 0, 'não localizado', 'não localizados')];
-      if (id === 'itau-dealer' && d.review) facts.push(plural(d.review, 'para revisão', 'para revisão'));
-      out.modules[id] = {
-        at: snap.at, ok: d.ok || 0, pending: d.pending || 0, value: d.itauValue || 0, facts: facts,
-        pendText: d.pending ? (id === 'itau-mvp' ? plural(d.pending, 'pendência', 'pendências') : plural(d.pending, 'divergência', 'divergências')) + (d.missing ? ', das quais ' + plural(d.missing, 'não localizada', 'não localizadas') : '') : ''
-      };
+  /* ---------------- Coleta por empresa ---------------- */
+  function difalUnit(company) {
+    var s = Shell.difalStateFor(company);
+    if (!s) return null;
+    var dates = [];
+    s.bankRows.forEach(function (r) { if (r.date && dates.indexOf(r.date) === -1) dates.push(r.date); });
+    if (!dates.length) return null;
+    dates.sort(function (a, b) { return toKey(a) - toKey(b); });
+    var d = { dates: dates.length, analyzed: 0, ok: 0, div: 0, miss: 0, value: 0, pendingDays: 0 };
+    var at = '', days = [], activity = [];
+    dates.forEach(function (date) {
+      var a = s.analyses[date], x = a && a.summary;
+      if (!x) { days.push({ date: date, state: 'none', detail: 'Ainda não conferido' }); return; }
+      d.analyzed++;
+      d.ok += x.exactCount || 0; d.div += x.divergenceCount || 0; d.miss += x.missingCount || 0;
+      d.value += (x.bankTotalCents || 0) / 100;
+      var p = (x.divergenceCount || 0) + (x.missingCount || 0);
+      if (p) d.pendingDays++;
+      if (a.analyzedAt > at) at = a.analyzedAt;
+      days.push({ date: date, state: p ? 'pend' : 'ok', detail: plural(x.missingCount || 0, 'título não baixado', 'títulos não baixados') + ', ' + plural(x.divergenceCount || 0, 'divergência', 'divergências') });
+      activity.push({ module: 'difal', company: company, at: a.analyzedAt, kind: p ? 'warn' : 'ok',
+        text: 'Dia ' + date + ': ' + (p ? plural(x.missingCount || 0, 'não baixado', 'não baixados') + ', ' + plural(x.divergenceCount || 0, 'divergência', 'divergências') : 'tudo bateu') });
+    });
+    return { module: 'difal', company: company, at: at, d: d, days: days, activity: activity };
+  }
+  function snapUnit(id, company) {
+    var snap = Store.get(Shell.latestKey(id, company), null);
+    if (id === 'cielo') {
+      var ev = Store.get(Shell.eventsKey('cielo', company), { files: 0 }) || { files: 0 };
+      if (!(snap && snap.data) && !ev.files) return null;
+      var c = (snap && snap.data) || {};
+      return { module: 'cielo', company: company, at: ev.lastAt || (snap && snap.at) || '',
+        d: { titles: c.titles || 0, totalClear: c.totalClear || 0, cielo04: c.cielo04 || 0, noteFee: c.noteFee || 0, files: ev.files || 0 },
+        settlementDate: c.settlementDate };
+    }
+    if (!snap || !snap.data) return null;
+    var d = {};
+    SPEC[id].fields.forEach(function (f) { d[f] = snap.data[f] || 0; });
+    return { module: id, company: company, at: snap.at, d: d };
+  }
+
+  function collect() {
+    var units = [];
+    companiesInScope().forEach(function (co) {
+      var u = difalUnit(co); if (u) units.push(u);
+      ['itau-mvp', 'itau-dealer', 'cielo'].forEach(function (id) { var x = snapUnit(id, co); if (x) units.push(x); });
     });
 
-    var c = Store.get('cf:latest:cielo', null);
-    var ce = Store.get('cf:events:cielo', { files: 0 });
-    if (c && c.data) {
-      out.modules.cielo = {
-        at: (ce && ce.lastAt) || c.at, value: c.data.totalClear || 0, files: ce.files || 0,
-        facts: [plural(c.data.titles || 0, 'título', 'títulos'), 'CIELO04 ' + brl.format(c.data.cielo04 || 0), 'Nota de débito ' + brl.format(c.data.noteFee || 0)],
-        settlementDate: c.data.settlementDate
-      };
-    }
+    var modules = {};
+    units.forEach(function (u) {
+      var m = modules[u.module];
+      if (!m) {
+        m = modules[u.module] = { units: [], d: {}, at: '' };
+        SPEC[u.module].fields.forEach(function (f) { m.d[f] = 0; });
+      }
+      m.units.push(u);
+      SPEC[u.module].fields.forEach(function (f) { m.d[f] += u.d[f] || 0; });
+      if (u.at > m.at) { m.at = u.at; if (u.settlementDate) m.settlementDate = u.settlementDate; }
+    });
 
+    var activity = [];
+    units.forEach(function (u) { if (u.activity) activity = activity.concat(u.activity); });
+    var scope = companiesInScope();
     var log = Store.get('cf:log', []);
-    if (Array.isArray(log)) out.activity = out.activity.concat(log.filter(function (e) { return e.module !== 'difal'; }));
-    out.activity.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
-    out.activity = out.activity.slice(0, 8);
-    return out;
-  }
-
-  function toKey(br) {
-    var m = String(br).match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    return m ? Number(m[3] + m[2] + m[1]) : 0;
+    if (Array.isArray(log)) {
+      log.forEach(function (e) {
+        if (!e || e.module === 'difal') return;
+        var co = e.company || null;
+        if (scope.indexOf(co) !== -1) activity.push(e);
+      });
+    }
+    activity.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    return { units: units, modules: modules, activity: activity.slice(0, 8) };
   }
 
   /* ---------------- Renderização ---------------- */
+  function companyTag(co) { return '<span class="co-tag">' + esc(Shell.companyName(co)) + '</span>'; }
+
+  function renderFilter() {
+    var opts = [{ id: 'all', name: 'Todas' }].concat(Shell.COMPANIES);
+    $('companyFilter').innerHTML = opts.map(function (o) {
+      var on = o.id === filter;
+      return '<button type="button" role="radio" aria-checked="' + on + '" data-f="' + o.id + '" class="seg-btn' + (on ? ' is-on' : '') + '">' + esc(o.name) + '</button>';
+    }).join('');
+  }
+
   function render() {
+    renderFilter();
     var data = collect();
-    var mods = data.modules;
-    var ids = Object.keys(mods);
+    var mods = data.modules, ids = Object.keys(mods);
+    var single = filter !== 'all';
 
     $('today').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
     $('emptyState').hidden = ids.length > 0;
+    $('emptyTitle').textContent = single ? 'Nenhuma conferência registrada para ' + Shell.companyName(filter) : 'Nenhuma conferência registrada';
     $('emptyLinks').innerHTML = Shell.MODULES.map(function (m) {
-      return '<a href="' + Shell.BASE + m.path + '">' + esc(MODULE_INFO[m.id].name) + '</a>';
+      return '<a href="' + href(m.id, single ? filter : null) + '">' + esc(MODULE_INFO[m.id].name) + '</a>';
     }).join('');
 
     // Indicadores principais
     var ok = 0, pend = 0, volume = 0, pendMods = 0;
     ids.forEach(function (id) {
-      var m = mods[id];
-      ok += m.ok || 0; pend += m.pending || 0; volume += m.value || 0;
-      if (m.pending) pendMods++;
+      var spec = SPEC[id], d = mods[id].d;
+      ok += spec.ok(d); pend += spec.pending(d); volume += spec.value(d);
+      if (spec.pending(d)) pendMods++;
     });
     var total = ok + pend;
-    var rate = total ? ok / total : null;
-    $('kRate').textContent = rate == null ? '—' : (rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+    $('kRate').textContent = total ? (ok / total * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—';
     $('kOk').textContent = int.format(ok);
     $('kPend').textContent = int.format(pend);
     $('kLedgerOk').style.width = total ? (ok / total * 100) + '%' : '0%';
     $('kLedgerPend').style.width = total ? (pend / total * 100) + '%' : '0%';
-    $('kLedger').setAttribute('aria-label', total ? ok + ' conciliados e ' + pend + ' pendências' : 'Sem dados');
+    $('kLedger').setAttribute('aria-label', total ? ok + ' itens batem e ' + pend + ' estão pendentes' : 'Sem dados');
     $('kLedger').classList.toggle('is-empty', !total);
 
     $('kPendBig').textContent = int.format(pend);
     $('kPendBig').classList.toggle('is-alert', pend > 0);
-    $('kPendSub').textContent = pend ? 'Em ' + plural(pendMods, 'aplicação', 'aplicações') : 'Nenhuma pendência registrada';
+    $('kPendSub').textContent = pend ? plural(pendMods, 'aplicação', 'aplicações') : '';
+
     var big = volume >= 1e5;
     $('kVolume').textContent = big ? brlCompact.format(volume) : brl.format(volume);
     $('kVolume').title = brl.format(volume);
-    $('kVolumeSub').textContent = big ? brl.format(volume) + ' somando a última análise de cada aplicação e o período DIFAL' : 'Última análise de cada aplicação e período DIFAL';
+    $('kVolumeSub').textContent = big ? brl.format(volume) : '';
 
     var cielo = mods.cielo;
-    $('kCielo').textContent = int.format(cielo ? cielo.files : 0);
-    $('kCieloSub').textContent = cielo && cielo.files ? 'Último ' + ago(cielo.at) + (cielo.settlementDate && cielo.settlementDate !== '—' ? ', baixa em ' + cielo.settlementDate : '') : 'Nenhum arquivo gerado';
+    $('kCielo').textContent = int.format(cielo ? cielo.d.files : 0);
+    $('kCieloSub').textContent = cielo && cielo.d.files ? 'Último ' + ago(cielo.at) + (cielo.settlementDate && cielo.settlementDate !== '—' ? ' · baixa ' + cielo.settlementDate : '') : '';
 
-    // Situação por aplicação
+    // Resultado de cada aplicação
     $('moduleRows').innerHTML = Shell.MODULES.map(function (meta) {
-      var id = meta.id, info = MODULE_INFO[id], m = mods[id];
-      var head = '<span class="mod-mark tone-' + info.tone + '">' + info.mark + '</span><div class="mod-title"><a href="' + href(id) + '">' + esc(info.name) + '</a><small>' + (m && m.at ? 'Última análise ' + ago(m.at) : 'Nenhuma análise registrada') + '</small></div>';
+      var id = meta.id, info = MODULE_INFO[id], m = mods[id], spec = SPEC[id];
+      var link = href(id, single ? filter : null);
+      var head = '<span class="mod-mark tone-' + info.tone + '">' + info.mark + '</span><div class="mod-title"><a href="' + link + '">' + esc(info.name) + '</a><small>' + (m && m.at ? 'Última conferência ' + ago(m.at) : 'Nenhuma conferência') + '</small></div>';
       var body;
       if (!m) {
-        body = '<div class="mod-body mod-body-empty"><span>' + (id === 'cielo' ? 'Analise uma planilha Cielo para ver o lote aqui.' : 'Conclua uma conferência para ver o resultado aqui.') + '</span></div>';
+        body = '';
       } else if (id === 'cielo') {
-        body = '<div class="mod-body"><div class="mod-figure"><strong>' + brl.format(m.value) + '</strong><span>a baixar no Dealer</span></div><p class="mod-facts">' + m.facts.map(esc).join('<span class="sep"></span>') + '</p></div>';
+        body = '<div class="mod-body"><div class="mod-figure"><strong>' + brl.format(m.d.totalClear) + '</strong><span>a baixar no Dealer</span></div><p class="mod-facts">' + spec.facts(m.d).map(esc).join('<span class="sep"></span>') + '</p>' + byCompany(m, id) + '</div>';
       } else {
-        var t = m.ok + m.pending, pct = t ? Math.round(m.ok / t * 100) : 0;
-        body = '<div class="mod-body"><div class="mod-bar" role="img" aria-label="' + pct + '% conciliado"><span class="ledger-ok" style="width:' + (t ? m.ok / t * 100 : 0) + '%"></span><span class="ledger-pend" style="width:' + (t ? m.pending / t * 100 : 0) + '%"></span></div>' +
-          '<div class="mod-nums"><span><b>' + int.format(m.ok) + '</b> conciliados</span><span class="' + (m.pending ? 'is-alert' : '') + '"><b>' + int.format(m.pending) + '</b> pendências</span><span class="mod-pct">' + pct + '%</span></div>' +
-          '<p class="mod-facts">' + m.facts.map(esc).join('<span class="sep"></span>') + '</p></div>';
+        var o = spec.ok(m.d), p = spec.pending(m.d), t = o + p, pct = t ? Math.round(o / t * 100) : 0;
+        body = '<div class="mod-body"><div class="mod-bar" role="img" aria-label="' + pct + '% fechado"><span class="ledger-ok" style="width:' + (t ? o / t * 100 : 0) + '%"></span><span class="ledger-pend" style="width:' + (t ? p / t * 100 : 0) + '%"></span></div>' +
+          '<div class="mod-nums"><span><b>' + int.format(o) + '</b> batem</span><span class="' + (p ? 'is-alert' : '') + '"><b>' + int.format(p) + '</b> pendentes</span><span class="mod-pct">' + pct + '% fechado</span></div>' +
+          '<p class="mod-facts">' + spec.facts(m.d).map(esc).join('<span class="sep"></span>') + '</p>' + byCompany(m, id) + '</div>';
       }
-      return '<article class="mod-row">' + '<div class="mod-head">' + head + '<a class="dash-link" href="' + href(id) + '">Abrir</a></div>' + body + '</article>';
+      return '<article class="mod-row' + (m ? '' : ' is-empty') + '"><div class="mod-head">' + head + '<a class="dash-link" href="' + link + '">Abrir</a></div>' + body + '</article>';
     }).join('');
 
-    // Pendências a tratar
-    var pendItems = ids.filter(function (id) { return mods[id].pendText; }).sort(function (a, b) { return mods[b].pending - mods[a].pending; });
-    $('pendList').innerHTML = pendItems.length ? pendItems.map(function (id) {
-      return '<li><a href="' + href(id) + '"><span class="pend-count">' + int.format(mods[id].pending) + '</span><span><strong>' + esc(MODULE_INFO[id].name) + '</strong><small>' + esc(mods[id].pendText) + '</small></span></a></li>';
-    }).join('') : '<li class="list-empty">' + (ids.length ? 'Tudo conciliado nas últimas análises.' : 'Sem análises para avaliar.') + '</li>';
+    // O que precisa de atenção (por empresa)
+    var pendUnits = data.units.filter(function (u) { return SPEC[u.module].pending(u.d) > 0; })
+      .sort(function (a, b) { return SPEC[b.module].pending(b.d) - SPEC[a.module].pending(a.d); });
+    $('pendList').innerHTML = pendUnits.length ? pendUnits.map(function (u) {
+      var n = SPEC[u.module].pending(u.d);
+      return '<li><a href="' + href(u.module, u.company) + '"><span class="pend-count">' + int.format(n) + '</span><span><strong>' + esc(MODULE_INFO[u.module].name) + (single ? '' : ' ' + companyTag(u.company)) + '</strong><small>' + esc(SPEC[u.module].pend(u.d)) + '</small></span></a></li>';
+    }).join('') : '<li class="list-empty">' + (ids.length ? 'Nada pendente.' : '—') + '</li>';
 
-    // Atividade
+    // Últimas conferências
     $('activity').innerHTML = data.activity.length ? data.activity.map(function (e) {
       var info = MODULE_INFO[e.module] || { name: e.module };
-      return '<li class="act-' + (e.kind === 'warn' ? 'warn' : 'ok') + '"><span class="act-dot"></span><div><strong>' + esc(info.name) + '</strong><span>' + esc(e.text) + '</span></div><time datetime="' + esc(e.at) + '" title="' + esc(fullDate(e.at)) + '">' + esc(ago(e.at)) + '</time></li>';
-    }).join('') : '<li class="list-empty">As conferências concluídas aparecem aqui.</li>';
+      return '<li class="act-' + (e.kind === 'warn' ? 'warn' : 'ok') + '"><span class="act-dot"></span><div><strong>' + esc(info.name) + (single ? '' : ' ' + companyTag(e.company || null)) + '</strong><span>' + esc(e.text) + '</span></div><time datetime="' + esc(e.at) + '" title="' + esc(fullDate(e.at)) + '">' + esc(ago(e.at)) + '</time></li>';
+    }).join('') : '<li class="list-empty">—</li>';
 
-    // Período DIFAL
-    var dm = mods.difal;
-    $('difalPeriod').hidden = !dm;
-    if (dm) {
-      $('difalSub').textContent = dm.analyzed + ' de ' + dm.dates + ' datas analisadas' + (dm.pendingDays ? ', ' + plural(dm.pendingDays, 'com pendências', 'com pendências') : '');
-      $('dayStrip').innerHTML = data.days.map(function (d) {
-        var parts = d.date.split('/');
-        return '<a class="day day-' + d.state + '" href="' + href('difal') + '" title="' + esc(d.date + ': ' + d.detail) + '"><b>' + esc(parts[0]) + '</b><span>' + esc(parts[1] || '') + '</span></a>';
-      }).join('');
-    }
+    // Dias conferidos · Banco Util (uma faixa por empresa)
+    var difalUnits = data.units.filter(function (u) { return u.module === 'difal'; });
+    $('difalPeriod').hidden = !difalUnits.length;
+    $('dayStrips').innerHTML = difalUnits.map(function (u) {
+      return '<div class="day-group"><div class="day-group-head"><strong>' + esc(single ? 'Período' : Shell.companyName(u.company)) + '</strong><span>' + u.d.analyzed + ' de ' + u.d.dates + ' dias · ' + plural(u.d.miss, 'título não baixado', 'títulos não baixados') + '</span><a class="dash-link" href="' + href('difal', u.company) + '">Abrir</a></div>' +
+        '<div class="day-strip">' + u.days.map(function (d) {
+          var parts = d.date.split('/');
+          return '<a class="day day-' + d.state + '" href="' + href('difal', u.company) + '" title="' + esc(d.date + ': ' + d.detail) + '"><b>' + esc(parts[0]) + '</b><span>' + esc(parts[1] || '') + '</span></a>';
+        }).join('') + '</div></div>';
+    }).join('');
   }
 
+  // Na visão "Todas": quanto cada empresa tem naquela aplicação.
+  function byCompany(m, id) {
+    if (filter !== 'all' || m.units.length < 2) return '';
+    var spec = SPEC[id];
+    return '<p class="mod-split">' + m.units.map(function (u) {
+      var label = id === 'cielo' ? plural(u.d.files, 'arquivo', 'arquivos') : plural(spec.pending(u.d), 'pendente', 'pendentes');
+      return '<a href="' + href(id, u.company) + '">' + companyTag(u.company) + ' ' + esc(label) + '</a>';
+    }).join('') + '</p>';
+  }
+
+  $('companyFilter').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-f]');
+    if (!b) return;
+    filter = b.getAttribute('data-f');
+    Store.set('cf:filter', filter);
+    render();
+  });
   $('refreshBtn').addEventListener('click', render);
   $('clearIndicators').addEventListener('click', function () {
-    if (!window.confirm('Limpar os indicadores do painel? O histórico salvo dentro do DIFAL não será apagado.')) return;
+    if (!window.confirm('Limpar os indicadores do painel? Os períodos da Conciliação Banco Util não serão apagados.')) return;
     try {
-      Object.keys(localStorage).forEach(function (k) { if (k.indexOf('cf:') === 0 && k !== 'cf:sidebar') localStorage.removeItem(k); });
+      Object.keys(localStorage).forEach(function (k) {
+        if ((k.indexOf('cf:latest:') === 0) || (k.indexOf('cf:events:') === 0) || k === 'cf:log') localStorage.removeItem(k);
+      });
     } catch (e) {}
     render();
   });

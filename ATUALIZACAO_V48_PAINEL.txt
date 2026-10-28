@@ -71,3 +71,43 @@ V48.4 - ARRASTAR E SOLTAR / COLAR ARQUIVOS EM TODA A CENTRAL (shell 2.1)
 - Itaú completa: removido código de um quadro de arraste antigo que não existia mais na
   página e gerava erro no console (app.js?v=48.4).
 - Implementado no shell.js/shell.css (v2.1); a lógica das aplicações não mudou.
+
+V48.5 - NOMES DO MENU E TÍTULOS DO PAINEL (shell 2.2)
+Menu lateral e painel:
+- DIFAL · Banco Util × Dealer      → Conciliação Banco Util
+- Itaú · Pagamentos                → Análise de pagamentos
+- Itaú · Recebimentos e pagamentos → Conciliação Cobrança
+- Gerador CIELO04                  → Antecipação Cielo (grupo "Cartões")
+Títulos do painel reescritos em linguagem direta:
+- Taxa de conciliação → Quanto já fechou
+- Pendências em aberto → Itens para tratar
+- Volume conferido → Valor conferido
+- Lotes CIELO04 gerados → Arquivos Cielo gerados
+- Situação por aplicação → Resultado de cada aplicação
+- Pendências a tratar → O que precisa de atenção
+- Atividade recente → Últimas conferências
+- Período DIFAL → Dias conferidos · Banco Util
+Os títulos dentro de cada aplicação não foram alterados.
+
+V48.6 - EMPRESAS (VEÍCULOS, MOTORS, FRANCE) E CENTRAL SEM TEXTOS EXPLICATIVOS (shell 2.3)
+Empresas
+- Cada aplicação tem o seletor Veículos / Motors / France no menu lateral, logo abaixo
+  do nome da aplicação. Na primeira vez em cada aplicação, a Central pede a empresa.
+- A empresa escolhida fica salva por aplicação.
+- Conciliação Banco Util: um período salvo por empresa. Trocar a empresa abre o período
+  daquela empresa. O período já salvo antes desta versão é vinculado à primeira empresa
+  escolhida.
+- Demais aplicações: o resultado de cada conferência é registrado na empresa escolhida.
+  Se a empresa for trocada logo após a conferência, o resultado passa para a nova empresa.
+- Painel: filtro Todas / Veículos / Motors / France. Em "Todas", cada aplicação mostra
+  quanto cada empresa tem pendente; "O que precisa de atenção" e "Últimas conferências"
+  mostram a empresa; "Dias conferidos · Banco Util" mostra uma faixa por empresa.
+- Conciliação Banco Util no painel mostra "títulos não baixados no Dealer".
+- Links do painel abrem a aplicação já na empresa filtrada.
+Textos explicativos removidos
+- Painel, menu lateral e as quatro aplicações: subtítulos, instruções, quadros "Como
+  funciona", "Regras", "Ordem obrigatória", rodapés e dicas de arrastar.
+- Mantidos: títulos, rótulos de campos, botões, mensagens de status/erro, legendas de
+  cores e a confirmação da Nota de Débito na Antecipação Cielo (texto encurtado).
+Cache-busting: shell/central/dashboard v2.3; difal/app.js, itau-mvp/app.js e
+itau-dealer/styles.css ?v=48.6.

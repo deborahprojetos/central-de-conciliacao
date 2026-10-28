@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '2.1';
+  var VERSION = '2.3';
   var root = document.documentElement;
   root.classList.add('cf-shell');
 
@@ -33,11 +33,65 @@
   }
 
   var MODULES = [
-    { id: 'difal', group: 'Conciliações', label: 'DIFAL · Banco Util × Dealer', short: 'DIFAL', path: 'difal/' },
-    { id: 'itau-mvp', group: 'Conciliações', label: 'Itaú · Pagamentos', short: 'Itaú pagamentos', path: 'itau-mvp/' },
-    { id: 'itau-dealer', group: 'Conciliações', label: 'Itaú · Recebimentos e pagamentos', short: 'Itaú completa', path: 'itau-dealer/' },
-    { id: 'cielo', group: 'Arquivos', label: 'Gerador CIELO04', short: 'CIELO04', path: 'cielo/?v=45' }
+    { id: 'difal', group: 'Conciliações', label: 'Conciliação Banco Util', short: 'Banco Util', path: 'difal/' },
+    { id: 'itau-mvp', group: 'Conciliações', label: 'Análise de pagamentos', short: 'Pagamentos', path: 'itau-mvp/' },
+    { id: 'itau-dealer', group: 'Conciliações', label: 'Conciliação Cobrança', short: 'Cobrança', path: 'itau-dealer/' },
+    { id: 'cielo', group: 'Cartões', label: 'Antecipação Cielo', short: 'Antecipação Cielo', path: 'cielo/?v=45' }
   ];
+
+  /* ---------------- Empresas (v2.3) ---------------- */
+  var COMPANIES = [
+    { id: 'veiculos', name: 'Veículos', short: 'V' },
+    { id: 'motors', name: 'Motors', short: 'M' },
+    { id: 'france', name: 'France', short: 'F' }
+  ];
+  var DIFAL_BASE = 'difal_conciliacao_final_1_0';
+  function companyById(id) {
+    for (var i = 0; i < COMPANIES.length; i++) if (COMPANIES[i].id === id) return COMPANIES[i];
+    return null;
+  }
+  function companyName(id) { var c = companyById(id); return c ? c.name : 'Sem empresa'; }
+  function currentModule() {
+    var path = location.pathname.replace(/\/index\.html$/, '/');
+    for (var i = 0; i < MODULES.length; i++) {
+      if (path.indexOf('/' + MODULES[i].id + '/') !== -1) return MODULES[i].id;
+    }
+    return 'painel';
+  }
+  function resolveCompany(mod) {
+    if (mod === 'painel') return null;
+    var m = location.hash.match(/empresa=([a-z]+)/);
+    if (m && companyById(m[1])) {
+      try { localStorage.setItem('cf:company:' + mod, m[1]); } catch (e) {}
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+      return m[1];
+    }
+    try { var v = localStorage.getItem('cf:company:' + mod); if (companyById(v)) return v; } catch (e) {}
+    return null;
+  }
+  var ACTIVE = currentModule();
+  var COMPANY = resolveCompany(ACTIVE);
+
+  // Conciliação Banco Util: um período salvo por empresa.
+  // O período salvo antes da separação por empresa é vinculado à primeira empresa escolhida.
+  if (ACTIVE === 'difal') {
+    try {
+      localStorage.removeItem(DIFAL_BASE + '::__none');
+      if (COMPANY) {
+        var legacy = localStorage.getItem(DIFAL_BASE);
+        var anyCompany = COMPANIES.some(function (c) { return localStorage.getItem(DIFAL_BASE + '::' + c.id) !== null; });
+        if (legacy && !anyCompany) {
+          localStorage.setItem(DIFAL_BASE + '::' + COMPANY, legacy);
+          localStorage.removeItem(DIFAL_BASE);
+          sessionStorage.setItem('cf:toast', 'Período já salvo vinculado a ' + companyName(COMPANY) + '.');
+        }
+      }
+    } catch (e) {}
+  }
+  function storageKey(base) { return base + '::' + (COMPANY || '__none'); }
+  function latestKey(id, company) { return 'cf:latest:' + id + (company ? ':' + company : ''); }
+  function eventsKey(id, company) { return 'cf:events:' + id + (company ? ':' + company : ''); }
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
   /* ---------------- Armazenamento de indicadores ---------------- */
   var Store = {
@@ -47,6 +101,7 @@
     set: function (key, value) {
       try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
     },
+    remove: function (key) { try { localStorage.removeItem(key); } catch (e) {} },
     log: function (entry) {
       var log = Store.get('cf:log', []);
       if (!Array.isArray(log)) log = [];
@@ -80,7 +135,7 @@
           dealerCount: parseInt10(txt('kde')), dealerValue: parseMoney(txt('kdev'))
         };
       },
-      describe: function (d) { return d.ok + ' conciliados, ' + d.pending + ' pendências'; }
+      describe: function (d) { return d.ok + ' batem, ' + d.pending + ' pendentes'; }
     },
     'itau-dealer': {
       watch: 'results',
@@ -91,7 +146,7 @@
           missing: parseInt10(txt('kpiMissing')), review: parseInt10(txt('kpiAdjust'))
         };
       },
-      describe: function (d) { return d.ok + ' conciliados, ' + d.pending + ' divergências'; }
+      describe: function (d) { return d.ok + ' batem, ' + d.pending + ' com divergência'; }
     },
     'cielo': {
       watch: 'results',
@@ -103,17 +158,11 @@
           cielo04: parseMoney(txt('cielo04Total')), settlementDate: txt('settlementDateSummary')
         };
       },
-      events: [{ id: 'downloadTxt', describe: function (d) { return 'CIELO04 gerado · ' + d.titles + ' títulos'; } }]
+      events: [{ id: 'downloadTxt', describe: function (d) { return 'Arquivo CIELO04 gerado com ' + d.titles + ' títulos'; } }]
     }
   };
 
-  function currentModule() {
-    var path = location.pathname.replace(/\/index\.html$/, '/');
-    for (var i = 0; i < MODULES.length; i++) {
-      if (path.indexOf('/' + MODULES[i].id + '/') !== -1) return MODULES[i].id;
-    }
-    return 'painel';
-  }
+  var session = null; // último resultado registrado nesta página (para trocar de empresa)
 
   function startCapture(id) {
     var cfg = CAPTURE[id];
@@ -124,18 +173,23 @@
 
     function snapshot() {
       if (target.classList.contains('hidden')) return null;
-      var data = cfg.read();
-      return { module: id, at: new Date().toISOString(), data: data };
+      return { module: id, company: COMPANY, at: new Date().toISOString(), data: cfg.read() };
     }
 
     function record() {
+      if (!COMPANY) return;
       var snap = snapshot();
       if (!snap) return;
-      var sig = JSON.stringify(snap.data);
-      var prev = Store.get('cf:latest:' + id, null);
-      if (prev && JSON.stringify(prev.data) === sig) return;
-      Store.set('cf:latest:' + id, snap);
-      if (cfg.logOnChange !== false) Store.log({ module: id, at: snap.at, text: cfg.describe(snap.data), kind: snap.data.pending ? 'warn' : 'ok' });
+      var key = latestKey(id, COMPANY);
+      var prev = Store.get(key, null);
+      if (prev && JSON.stringify(prev.data) === JSON.stringify(snap.data)) return;
+      Store.set(key, snap);
+      var logIds = [];
+      if (cfg.logOnChange !== false) {
+        var logId = newId(); logIds.push(logId);
+        Store.log({ id: logId, module: id, company: COMPANY, at: snap.at, text: cfg.describe(snap.data), kind: snap.data.pending ? 'warn' : 'ok' });
+      }
+      session = { id: id, company: COMPANY, snap: snap, prev: prev, logIds: logIds, files: 0 };
     }
 
     new MutationObserver(function () {
@@ -147,36 +201,122 @@
       var btn = document.getElementById(ev.id);
       if (!btn) return;
       btn.addEventListener('click', function () {
-        if (btn.disabled) return;
+        if (btn.disabled || !COMPANY) return;
         var snap = snapshot();
         if (!snap) return;
-        Store.set('cf:latest:' + id, snap);
-        var counts = Store.get('cf:events:' + id, { files: 0 });
+        var key = latestKey(id, COMPANY);
+        var prev = Store.get(key, null);
+        Store.set(key, snap);
+        var ek = eventsKey(id, COMPANY);
+        var counts = Store.get(ek, { files: 0 });
         counts.files = (counts.files || 0) + 1;
         counts.lastAt = snap.at;
-        Store.set('cf:events:' + id, counts);
-        Store.log({ module: id, at: snap.at, text: ev.describe(snap.data), kind: 'ok' });
+        Store.set(ek, counts);
+        var logId = newId();
+        Store.log({ id: logId, module: id, company: COMPANY, at: snap.at, text: ev.describe(snap.data), kind: 'ok' });
+        if (session && session.id === id && session.company === COMPANY) {
+          session.snap = snap; session.files++; session.logIds.push(logId);
+        } else {
+          session = { id: id, company: COMPANY, snap: snap, prev: prev, logIds: [logId], files: 1 };
+        }
       });
     });
   }
 
+  // Troca de empresa depois de uma análise: o resultado passa para a empresa escolhida.
+  function moveSession(to) {
+    if (!session || session.company === to) return;
+    var from = session.company, id = session.id;
+    if (session.prev) Store.set(latestKey(id, from), session.prev); else Store.remove(latestKey(id, from));
+    var newPrev = Store.get(latestKey(id, to), null);
+    var snap = JSON.parse(JSON.stringify(session.snap)); snap.company = to;
+    Store.set(latestKey(id, to), snap);
+    if (session.files) {
+      var a = Store.get(eventsKey(id, from), { files: 0 }), b = Store.get(eventsKey(id, to), { files: 0 });
+      a.files = Math.max(0, (a.files || 0) - session.files);
+      b.files = (b.files || 0) + session.files; b.lastAt = snap.at;
+      Store.set(eventsKey(id, from), a); Store.set(eventsKey(id, to), b);
+    }
+    var log = Store.get('cf:log', []);
+    if (Array.isArray(log)) {
+      log.forEach(function (e) { if (e && session.logIds.indexOf(e.id) !== -1) e.company = to; });
+      Store.set('cf:log', log);
+    }
+    session.company = to; session.prev = newPrev; session.snap = snap;
+  }
+
   /* ---------------- Pendências por aplicação (para os selos do menu) ---------------- */
-  function difalState() {
-    var s = Store.get('difal_conciliacao_final_1_0', null);
+  function difalStateFor(company) {
+    var s = Store.get(company ? DIFAL_BASE + '::' + company : DIFAL_BASE, null);
     return s && s.analyses && Array.isArray(s.bankRows) ? s : null;
   }
-  function pendingFor(id) {
+  function pendingOne(id, company) {
     if (id === 'difal') {
-      var s = difalState();
+      var s = difalStateFor(company);
       if (!s) return 0;
       return Object.keys(s.analyses).reduce(function (sum, d) {
         var x = s.analyses[d].summary || {};
         return sum + (x.divergenceCount || 0) + (x.missingCount || 0);
       }, 0);
     }
-    var latest = Store.get('cf:latest:' + id, null);
+    var latest = Store.get(latestKey(id, company), null);
     return latest && latest.data && latest.data.pending ? latest.data.pending : 0;
   }
+  // Sem empresa informada: soma todas as empresas.
+  function pendingFor(id, company) {
+    if (company !== undefined) return pendingOne(id, company);
+    return COMPANIES.reduce(function (sum, c) { return sum + pendingOne(id, c.id); }, pendingOne(id, null));
+  }
+
+  /* ---------------- Escolha da empresa ---------------- */
+  function companyControl() {
+    return '<div class="cf-company" role="radiogroup" aria-label="Empresa">' + COMPANIES.map(function (c) {
+      var on = c.id === COMPANY;
+      return '<button type="button" role="radio" aria-checked="' + on + '" data-company="' + c.id + '" class="cf-co' + (on ? ' is-on' : '') + '" title="' + c.name + '">' +
+        '<span class="cf-co-full">' + c.name + '</span><span class="cf-co-short">' + c.short + '</span></button>';
+    }).join('') + '</div>';
+  }
+  function refreshCompanyUI() {
+    Array.prototype.forEach.call(document.querySelectorAll('.cf-co'), function (b) {
+      var on = b.getAttribute('data-company') === COMPANY;
+      b.classList.toggle('is-on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    var mob = document.querySelector('.cf-mobile-co');
+    if (mob) mob.textContent = COMPANY ? companyName(COMPANY) : '';
+    root.setAttribute('data-empresa', COMPANY || '');
+  }
+  function chooseCompany(id) {
+    if (!companyById(id)) return;
+    closeCompanyModal();
+    if (id === COMPANY) return;
+    var prev = COMPANY;
+    try { localStorage.setItem('cf:company:' + ACTIVE, id); } catch (e) {}
+    if (ACTIVE === 'difal') {
+      try { sessionStorage.setItem('cf:toast', 'Empresa: ' + companyName(id)); } catch (e) {}
+      location.reload();
+      return;
+    }
+    if (prev) moveSession(id);
+    COMPANY = id;
+    refreshCompanyUI();
+    toast('Empresa: ' + companyName(id));
+  }
+  function openCompanyModal() {
+    if (document.getElementById('cf-modal')) return;
+    var m = document.createElement('div');
+    m.id = 'cf-modal'; m.className = 'cf-modal';
+    m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'cf-modal-title');
+    m.innerHTML = '<div class="cf-modal-box"><h2 id="cf-modal-title">Escolha a empresa</h2><div class="cf-modal-options">' +
+      COMPANIES.map(function (c) { return '<button type="button" data-company="' + c.id + '">' + c.name + '</button>'; }).join('') +
+      '</div><a class="cf-modal-back" href="' + BASE + '">Voltar ao painel</a></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-company]');
+      if (b) chooseCompany(b.getAttribute('data-company'));
+    });
+    var first = m.querySelector('button'); if (first) first.focus();
+  }
+  function closeCompanyModal() { var m = document.getElementById('cf-modal'); if (m) m.parentNode.removeChild(m); }
 
   /* ---------------- Menu lateral ---------------- */
   function buildSidebar(active) {
@@ -186,7 +326,7 @@
     aside.setAttribute('aria-label', 'Menu da Central Financeira');
 
     var html = '';
-    html += '<div class="cf-brand"><a href="' + BASE + '" class="cf-brand-link"><span class="cf-mark">CF</span><span class="cf-brand-text"><strong>Central Financeira</strong><small>Conciliação e arquivos</small></span></a>';
+    html += '<div class="cf-brand"><a href="' + BASE + '" class="cf-brand-link"><span class="cf-mark">CF</span><span class="cf-brand-text"><strong>Central Financeira</strong></span></a>';
     html += '<button type="button" class="cf-collapse" aria-label="Recolher menu" title="Recolher menu">' + icon('recolher') + '</button></div>';
     html += '<nav class="cf-nav">';
     html += '<a class="cf-item' + (active === 'painel' ? ' is-active' : '') + '" href="' + BASE + '"' + (active === 'painel' ? ' aria-current="page"' : '') + '>' + icon('painel') + '<span class="cf-label">Painel</span></a>';
@@ -198,18 +338,20 @@
       var isActive = active === m.id;
       html += '<a class="cf-item' + (isActive ? ' is-active' : '') + '" href="' + BASE + m.path + '" title="' + m.label + '"' + (isActive ? ' aria-current="page"' : '') + '>' + icon(m.id) +
         '<span class="cf-label">' + m.label + '</span>' +
-        (pend ? '<span class="cf-pill" title="' + pend + ' pendência(s) na última análise">' + (pend > 99 ? '99+' : pend) + '</span>' : '') + '</a>';
+        (pend ? '<span class="cf-pill" title="' + pend + ' pendente(s)">' + (pend > 99 ? '99+' : pend) + '</span>' : '') + '</a>';
+      if (isActive) html += companyControl();
     });
     html += '</nav>';
 
-    html += '<div class="cf-foot"><p class="cf-note"><span class="cf-dot"></span><span class="cf-label">Arquivos processados neste navegador</span></p>';
+    html += '<div class="cf-foot">';
     html += '<a class="cf-item cf-logout" href="/__logout">' + icon('sair') + '<span class="cf-label">Sair</span></a>';
     html += '<p class="cf-version cf-label">Versão ' + VERSION + '</p></div>';
     aside.innerHTML = html;
 
     var mobileBar = document.createElement('div');
     mobileBar.className = 'cf-mobilebar';
-    mobileBar.innerHTML = '<button type="button" class="cf-burger" aria-controls="cf-sidebar" aria-expanded="false" aria-label="Abrir menu">' + icon('menu') + '</button><a href="' + BASE + '" class="cf-mobile-title"><span class="cf-mark">CF</span>Central Financeira</a>';
+    mobileBar.innerHTML = '<button type="button" class="cf-burger" aria-controls="cf-sidebar" aria-expanded="false" aria-label="Abrir menu">' + icon('menu') + '</button><a href="' + BASE + '" class="cf-mobile-title"><span class="cf-mark">CF</span>Central Financeira</a>' +
+      (active !== 'painel' ? '<span class="cf-mobile-co"></span>' : '');
 
     var scrim = document.createElement('div');
     scrim.className = 'cf-scrim';
@@ -217,6 +359,11 @@
     document.body.insertBefore(scrim, document.body.firstChild);
     document.body.insertBefore(aside, document.body.firstChild);
     document.body.insertBefore(mobileBar, document.body.firstChild);
+
+    aside.addEventListener('click', function (e) {
+      var b = e.target.closest('.cf-co');
+      if (b) chooseCompany(b.getAttribute('data-company'));
+    });
 
     var burger = mobileBar.querySelector('.cf-burger');
     function setOpen(open) {
@@ -353,16 +500,6 @@
     return { el: zone, input: input, label: label, folders: !!cfg.folders || input.hasAttribute('webkitdirectory'), hint: cfg.hint !== false };
   }
 
-  function addHint(z) {
-    if (!z.hint) return;
-    var anchor = z.input.closest('label') || (z.input.id && document.querySelector('label[for="' + z.input.id + '"]'));
-    if (!anchor || !anchor.parentNode) return;
-    var p = document.createElement('p');
-    p.className = 'cf-drop-hint';
-    p.textContent = 'ou arraste o arquivo até este quadro · Ctrl+V cola um arquivo copiado';
-    anchor.parentNode.insertBefore(p, anchor.nextSibling);
-  }
-
   function innermostZone(target) {
     var best = null;
     dropZones.forEach(function (z) {
@@ -381,7 +518,6 @@
       z.el.classList.add('cf-dropzone');
       z.el.setAttribute('data-drop-label', z.label);
       dropZones.push(z);
-      addHint(z);
     });
 
     var depth = 0;
@@ -444,13 +580,24 @@
   }
 
   // API usada pelo painel.
-  window.CentralShell = { MODULES: MODULES, Store: Store, difalState: difalState, pendingFor: pendingFor, BASE: BASE, VERSION: VERSION };
+  window.CentralShell = {
+    MODULES: MODULES, COMPANIES: COMPANIES, Store: Store, BASE: BASE, VERSION: VERSION,
+    company: function () { return COMPANY; }, companyName: companyName,
+    storageKey: storageKey, latestKey: latestKey, eventsKey: eventsKey,
+    difalStateFor: difalStateFor, pendingFor: pendingFor
+  };
 
   function init() {
-    var active = currentModule();
+    var active = ACTIVE;
     buildSidebar(active);
+    refreshCompanyUI();
     startCapture(active);
     setupDropZones();
+    if (active !== 'painel' && !COMPANY) openCompanyModal();
+    try {
+      var msg = sessionStorage.getItem('cf:toast');
+      if (msg) { sessionStorage.removeItem('cf:toast'); setTimeout(function () { toast(msg); }, 300); }
+    } catch (e) {}
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

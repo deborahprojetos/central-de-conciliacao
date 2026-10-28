@@ -143,7 +143,7 @@ function renderReadableAnalysis(r){
    if(kind==='review'&&x.status==='ENCONTRADO_PARCIAL')reason=`Possível vínculo com diferença de ${brl(value-dealerValue)}; conferir antes de conciliar.`;
    return `<tr><td><strong>${esc(x.itau.map(i=>i.name||i.payee).join(' + '))}</strong>${x.itau[0]?.taxId?`<small>CPF/CNPJ Itaú: ${esc(x.itau[0].taxId)}</small>`:''}</td><td class="money">${brl(value)}</td><td>${x.dealer.length?`<strong>${esc(names(x))}</strong><small>Título(s): ${esc(refs(x))} · Total ${brl(dealerValue)}</small>`:'—'}</td><td>${esc(reason)}</td></tr>`;
  }).join(''):'<tr><td colspan="4">Nenhum pagamento nesta situação.</td></tr>';
- const section=(title,desc,items,kind)=>`<section class="analysis-panel ${kind}"><header><h2>${title} <span>${items.length}</span></h2><p>${desc}</p></header><div class="analysis-scroll"><table><thead><tr><th>Pagamento no Itaú</th><th>Valor</th><th>Registro no Dealer</th><th>Por quê</th></tr></thead><tbody>${rows(items,kind)}</tbody></table></div></section>`;
+ const section=(title,desc,items,kind)=>`<section class="analysis-panel ${kind}"><header><h2>${title} <span>${items.length}</span></h2></header><div class="analysis-scroll"><table><thead><tr><th>Pagamento no Itaú</th><th>Valor</th><th>Registro no Dealer</th><th>Por quê</th></tr></thead><tbody>${rows(items,kind)}</tbody></table></div></section>`;
  $('analysisSections').innerHTML=section('Pagamento no Itaú sem correspondência no Dealer','Nenhum título foi atribuído com segurança.',missing,'missing')+
   section('Consta no Itaú e no Dealer','Nome compatível e valor exato, individual ou somado.',confirmed,'confirmed')+
   section('Valor encontrado: revisar o vínculo','Nome divergente, valor repetido, composição ambígua ou diferença de valor.',review,'review')+
