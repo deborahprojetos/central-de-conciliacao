@@ -13,6 +13,8 @@
   var INDEX_KEY = 'cf:extrato:pasta';
   var MAP_KEY = 'cf:extrato:mapa';
   var POLL_MS = 120000;
+  // Quando a leitura dos arquivos melhora, a pasta inteira é lida de novo uma vez.
+  var READER_VERSION = '1.5';
 
   var dir = null, granted = false, scanning = false, timer = null;
   var handles = {};   // caminho → FileSystemFileHandle (nesta sessão)
@@ -105,7 +107,8 @@
     catch (err) { rec.status = 'erro'; rec.msg = err && err.message ? err.message : 'Não foi possível ler.'; idx.files[entry.path] = rec; return; }
     if (!parsed.rows || !parsed.rows.length) { rec.status = 'ignorado'; rec.msg = 'Sem lançamentos de extrato'; idx.files[entry.path] = rec; return; }
     var who = identify(entry, parsed);
-    rec.month = parsed.period || '';
+    var parts = splitByMonth(parsed);
+    rec.month = parts.length ? parts.map(function (x) { return x.month; }).join(',') : (parsed.period || '');
     rec.account = parsed.account || '';
     rec.suggestion = who.suggestion || '';
     if (!who.company || !rec.month) {
@@ -120,19 +123,49 @@
     idx.files[entry.path] = rec;
   }
 
+  // Lançamentos de meses diferentes no mesmo arquivo vão cada um para o seu mês.
+  function splitByMonth(parsed) {
+    var year = (parsed.period || '').slice(0, 4), groups = {}, order = [];
+    parsed.rows.forEach(function (r) {
+      var y = r.yyyy || year;
+      if (!y) return;
+      var k = y + '-' + r.mm;
+      if (!groups[k]) { groups[k] = []; order.push(k); }
+      groups[k].push(r);
+    });
+    // Mês só com linha de saldo (ex.: "SALDO ANTERIOR" do último dia do mês anterior) não vira mês novo.
+    order = order.filter(function (k) { return groups[k].some(function (r) { return !r.saldo; }); });
+    return order.sort().map(function (k) {
+      return { month: k, parsed: { columns: parsed.columns, rows: groups[k], period: k, account: parsed.account } };
+    });
+  }
+
   function doImport(path, name, parsed, company, month, rec, force) {
-    var res = App.importInto(company, month, name, parsed, 'pasta:' + path, name, { force: !!force });
+    var parts = month && month.indexOf(',') === -1 && parsed.period !== month
+      ? [{ month: month, parsed: parsed }]
+      : splitByMonth(parsed);
+    if (!parts.length) parts = [{ month: month, parsed: parsed }];
+    var res = { kept: 0 }, firstRes = null;
+    for (var i = 0; i < parts.length; i++) {
+      var r = App.importInto(company, parts[i].month, name, parts[i].parsed, 'pasta:' + path, name, { force: !!force });
+      if (!firstRes) firstRes = r;
+      if (r.conflict && !res.conflict) res = r;
+      else if (r.duplicate && !res.conflict && !res.duplicate) res = r;
+      else if (!r.conflict && !r.duplicate) { res.replaced = (res.replaced || []).concat(r.replaced || []); res.ok = true; }
+    }
+    if (res.ok) { delete res.duplicate; delete res.conflict; }
+    month = parts.map(function (x) { return x.month; }).join(',');
     rec.company = company; rec.month = month;
-    if (res.conflict) {
+    if (res.conflict && !res.ok) {
       rec.status = 'aguardando'; rec.conflict = true;
       rec.msg = res.overlap + ' lançamentos repetidos com ' + res.conflict;
       parsedMem[path] = parsed;
       return;
     }
     delete rec.conflict;
-    if (res.duplicate) { rec.status = 'duplicado'; rec.msg = (res.contained ? 'Já contido em ' : 'Mesmo conteúdo de ') + res.duplicate; }
+    if (res.duplicate && !res.ok) { rec.status = 'duplicado'; rec.msg = (res.contained ? 'Já contido em ' : 'Mesmo conteúdo de ') + res.duplicate; }
     else {
-      rec.status = 'ok'; rec.msg = parsed.rows.length + ' lançamentos';
+      rec.status = 'ok'; rec.msg = parsed.rows.filter(function (x) { return !x.saldo; }).length + ' lançamentos';
       if (res.replaced && res.replaced.length) {
         res.replaced.forEach(function (k) {
           var p = k.indexOf('pasta:') === 0 ? k.slice(6) : '';
@@ -151,6 +184,7 @@
     try {
       var list = await walk(dir, [], 0, []);
       var idx = index();
+      if (idx.reader !== READER_VERSION) force = true;
       var seen = {};
       handles = {};
       var todo = [];
@@ -169,6 +203,7 @@
       Object.keys(idx.files).forEach(function (p) { if (!seen[p]) delete idx.files[p]; });
       idx.lastScan = new Date().toISOString();
       idx.folderName = dir.name;
+      idx.reader = READER_VERSION;
       applyPatches(idx);
       setJSON(INDEX_KEY, idx);
       // Resolve pendentes que agora têm empresa (ex.: empresa criada depois).
@@ -238,7 +273,7 @@
       var co = r.company ? Shell.companyName(r.company) : '';
       return '<li data-path="' + esc(r.path) + '"><div class="fd-file"><strong>' + esc(r.path) + '</strong><span>' + esc(r.msg) + (r.account ? ' · conta ' + esc(r.account) : '') + '</span></div>' +
         '<input class="fd-co" list="fdCompanies" placeholder="Empresa" aria-label="Empresa" value="' + esc(co) + '">' +
-        '<input class="fd-month" type="month" aria-label="Mês" value="' + esc(r.month || '') + '">' +
+        '<input class="fd-month" type="month" aria-label="Mês" value="' + esc((r.month || '').split(',')[0]) + '">' +
         '<label class="fd-remember"><input type="checkbox" checked> Lembrar</label>' +
         '<button type="button" class="ex-btn ex-primary fd-import"' + (granted ? '' : ' disabled') + '>' + (r.conflict ? 'Importar mesmo assim' : 'Importar') + '</button>' +
         '<button type="button" class="ex-btn fd-ignore">Ignorar</button></li>';
@@ -250,7 +285,7 @@
     var labels = { ok: 'Importado', aguardando: 'Aguardando', duplicado: 'Duplicado', ignorado: 'Ignorado', erro: 'Erro' };
     files.sort(function (a, b) { return (order[a.status] - order[b.status]) || a.path.localeCompare(b.path, 'pt-BR'); });
     $('folderFiles').innerHTML = files.map(function (r) {
-      return '<tr class="fd-' + r.status + '"><td>' + esc(r.path) + '</td><td>' + esc(r.company ? Shell.companyName(r.company) : '—') + '</td><td>' + esc(r.month ? App.monthLabel(r.month) : '—') + '</td><td><span class="fd-tag">' + labels[r.status] + '</span></td><td>' + esc(r.msg || '') + '</td></tr>';
+      return '<tr class="fd-' + r.status + '"><td>' + esc(r.path) + '</td><td>' + esc(r.company ? Shell.companyName(r.company) : '—') + '</td><td>' + esc(r.month ? r.month.split(',').map(App.monthLabel).join(', ') : '—') + '</td><td><span class="fd-tag">' + labels[r.status] + '</span></td><td>' + esc(r.msg || '') + '</td></tr>';
     }).join('');
     $('folderDetails').hidden = !files.length;
   }

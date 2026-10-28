@@ -72,6 +72,19 @@
     if (/\.(xlsx|xlsm|xls|csv)$/.test(n)) return 'sheet';
     return '';
   }
+  // Alguns bancos gravam no arquivo um tamanho de planilha menor que o real (ex.: "A1:G13"
+  // com dados até a linha 181). Recalcula pelo conteúdo para não perder lançamentos.
+  function fixRange(ws) {
+    if (!ws) return;
+    var maxR = -1, maxC = -1;
+    Object.keys(ws).forEach(function (k) {
+      if (k.charAt(0) === '!') return;
+      var a = XLSX.utils.decode_cell(k);
+      if (a.r > maxR) maxR = a.r;
+      if (a.c > maxC) maxC = a.c;
+    });
+    if (maxR >= 0) ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+  }
   // Lê PDF ou Excel e devolve { columns, rows, period, account }.
   async function readAny(file) {
     var kind = fileKind(file.name);
@@ -87,6 +100,7 @@
       var wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
       var best = null;
       wb.SheetNames.forEach(function (n) {
+        fixRange(wb.Sheets[n]);
         var matrix = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
         var r = Core.parseSheet(matrix);
         if (!best || r.rows.length > best.rows.length) {
@@ -125,7 +139,7 @@
     var rows = parsed.rows.map(function (r) {
       var values = {};
       Object.keys(r.values).forEach(function (k) { values[remap[k]] = r.values[k]; });
-      return { id: r.id + tag, date: r.dd + '/' + r.mm + '/' + (r.yyyy || yyyy), day: r.dd + '/' + r.mm, desc: r.desc, values: values, saldo: r.saldo, src: src };
+      return { id: r.id + tag, date: r.dd + '/' + r.mm + '/' + (r.yyyy || yyyy), day: r.dd + '/' + r.mm, desc: r.desc, extra: r.extra || '', values: values, saldo: r.saldo, src: src };
     });
 
     // Mesmo extrato em outro arquivo (ex.: .xls e .xlsx, ou versão mais completa): não soma duas vezes.
@@ -165,6 +179,18 @@
     }
 
     var others = old ? old.rows.filter(function (r) { return (r.src || '') !== src; }) : [];
+    // Mesmo arquivo com outro período (ex.: FRANCE.xlsx salvo de novo no dia seguinte):
+    // atualiza só os dias que vieram no arquivo novo e mantém os dias anteriores.
+    if (old) {
+      var newDays = {};
+      rows.forEach(function (r) { if (!r.saldo) newDays[r.day] = 1; });
+      if (!Object.keys(newDays).length) rows.forEach(function (r) { newDays[r.day] = 1; });
+      var keepOld = old.rows.filter(function (r) { return (r.src || '') === src && !newDays[r.day]; });
+      var keptDays = {};
+      keepOld.forEach(function (r) { keptDays[r.day] = 1; });
+      rows = rows.filter(function (r) { return newDays[r.day] || !keptDays[r.day]; });
+      others = others.concat(keepOld);
+    }
     var all = others.concat(rows).map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
       return a.r.day.slice(0, 2) - b.r.day.slice(0, 2) || a.i - b.i;
     }).map(function (x) { return x.r; });
@@ -194,7 +220,7 @@
       if (!parsed.rows.length) throw new Error('Nenhum lançamento com data e valor foi encontrado neste arquivo.');
       pending = { fileName: file.name, parsed: parsed };
       var period = parsed.period || new Date().toISOString().slice(0, 7);
-      $('previewTitle').textContent = parsed.rows.length + ' lançamentos encontrados';
+      $('previewTitle').textContent = parsed.rows.filter(function (x) { return !x.saldo; }).length + ' lançamentos encontrados';
       $('previewCols').textContent = 'Colunas: ' + parsed.columns.map(function (c) { return c.name; }).join(', ');
       $('previewMonth').value = period;
       updateSaveLabel();
@@ -256,7 +282,7 @@
       if (tp && rowType(r, mo.columns) !== tp) return false;
       if (rp === '-' && mk.resp) return false;
       if (rp && rp !== '-' && (mk.resp || '') !== rp) return false;
-      if (q && (r.desc + ' ' + (mk.resp || '') + ' ' + (((mo.sources || {})[r.src || ''] || {}).label || '')).toLowerCase().indexOf(q) === -1) return false;
+      if (q && (r.desc + ' ' + (r.extra || '') + ' ' + (mk.resp || '') + ' ' + (((mo.sources || {})[r.src || ''] || {}).label || '')).toLowerCase().indexOf(q) === -1) return false;
       return true;
     });
   }
@@ -333,7 +359,7 @@
     $('tbody').innerHTML = rows.map(function (r) {
       var mk = mo.marks[r.id] || {};
       var cls = mk.status === 'Pendente' ? 'st-pend' : mk.status === 'Em análise' ? 'st-ana' : '';
-      return '<tr data-id="' + r.id + '" class="' + cls + (r.saldo ? ' is-saldo' : '') + '"><td class="date">' + esc(r.day) + '</td>' + (multi ? '<td class="src">' + esc(srcLabel(r)) + '</td>' : '') + '<td class="desc">' + esc(r.desc) + '</td>' +
+      return '<tr data-id="' + r.id + '" class="' + cls + (r.saldo ? ' is-saldo' : '') + '"><td class="date">' + esc(r.day) + '</td>' + (multi ? '<td class="src">' + esc(srcLabel(r)) + '</td>' : '') + '<td class="desc">' + esc(r.desc) + (r.extra ? '<small>' + esc(r.extra) + '</small>' : '') + '</td>' +
         cols.map(function (c) {
           var v = r.values[c.id];
           return '<td class="num' + (v < 0 ? ' is-neg' : '') + '">' + (typeof v === 'number' ? brl.format(v) : '') + '</td>';

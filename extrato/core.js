@@ -261,7 +261,8 @@
   var HDR_DATE = /^(data|dt)\b|data\s+(do\s+)?(lan[cç]amento|movimento|mov)/i;
   var HDR_DESC = /hist[oó]rico|descri[cç][aã]o|lan[cç]amento|complemento|detalhe|opera[cç][aã]o/i;
   var HDR_MONEY = /valor|cr[eé]dito|d[eé]bito|entrada|sa[ií]da|saldo|montante|movimenta/i;
-  var HDR_DOC = /documento|^doc\b|n[uú]mero|^n[ºo°]/i;
+  var HDR_DOC = /documento|^doc\b|n[uú]mero|^n[ºo°]|cpf|cnpj|ag\.?\s*\/?\s*origem|^ag[eê]ncia|^origem/i;
+  var HDR_NAME = /raz[aã]o\s+social|favorecido|benefici|pagador|remetente|contraparte|^nome/i;
 
   function cellText(v) {
     if (v == null) return '';
@@ -321,18 +322,22 @@
 
     // 3) Colunas de valor: nome de valor ou maioria numérica nas linhas com data.
     var dated = body.filter(function (r) { return cellDate(r[dateCol]); });
-    var moneyCols = [], descCols = [];
+    var moneyCols = [], descCols = [], nameCols = [], docCols = [];
     for (var k = 0; k < width; k++) {
       if (k === dateCol) continue;
       var name = header[k] || '';
       var filled = dated.filter(function (r) { return cellText(r[k]) !== '' || typeof r[k] === 'number'; });
       var numeric = filled.filter(function (r) { return cellMoney(r[k]) !== null; }).length;
       var looksMoney = HDR_MONEY.test(name) && !HDR_DOC.test(name);
-      if (looksMoney || (!HDR_DESC.test(name) && !HDR_DOC.test(name) && filled.length && numeric / filled.length > 0.8 && dated.some(function (r) { var v = cellMoney(r[k]); return v !== null && Math.round(v) !== v; }))) {
+      if (looksMoney || (!HDR_DESC.test(name) && !HDR_DOC.test(name) && !HDR_NAME.test(name) && filled.length && numeric / filled.length > 0.8 && dated.some(function (r) { var v = cellMoney(r[k]); return v !== null && Math.round(v) !== v; }))) {
         moneyCols.push(k);
-      } else if (filled.length && (HDR_DESC.test(name) || !name || HDR_DOC.test(name))) {
-        descCols.push(k);
-      } else if (filled.length) {
+      } else if (!filled.length) {
+        continue;
+      } else if (HDR_NAME.test(name)) {
+        nameCols.push(k);
+      } else if (HDR_DOC.test(name)) {
+        docCols.push(k);
+      } else {
         descCols.push(k);
       }
     }
@@ -358,11 +363,13 @@
         else if (v === 0 && col.saldo) { values[col.id] = 0; }
       });
       if (!n || !last) return;
-      var desc = descCols.map(function (k) { return cellText(r[k]); }).filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
+      var txt = function (cols) { return cols.map(function (k) { return cellText(r[k]); }).filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim(); };
+      var desc = [txt(descCols), txt(nameCols)].filter(Boolean).join(' · ');
+      var extra = docCols.map(function (k) { var v = cellText(r[k]); return v ? (header[k] ? header[k] + ' ' : '') + v : ''; }).filter(Boolean).join(' · ');
       if (!d && !desc) return;
       var sig = last.dd + '/' + last.mm + '|' + desc + '|' + JSON.stringify(values);
       occ[sig] = (occ[sig] || 0) + 1;
-      rows.push({ id: hash(sig + '#' + occ[sig]), dd: last.dd, mm: last.mm, yyyy: last.yyyy, desc: desc, values: values, saldo: /\bsaldo\b/i.test(desc) });
+      rows.push({ id: hash(sig + '#' + occ[sig]), dd: last.dd, mm: last.mm, yyyy: last.yyyy, desc: desc, extra: extra, values: values, saldo: /\bsaldo\b/i.test(desc) });
     });
     columns.forEach(function (c) { delete c._k; });
 

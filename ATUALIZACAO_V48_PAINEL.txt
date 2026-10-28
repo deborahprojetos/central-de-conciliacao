@@ -175,3 +175,17 @@ Muitas empresas
 - Acima de 6 empresas, a barra de empresa vira um campo com busca; o filtro do painel
   vira uma lista; a janela de escolha ganha busca.
 - "Empresas": cadastro em lote (uma por linha).
+
+V48.10 - EXTRATO DO MÊS · LEITURA CORRETA DO EXCEL DO BANCO
+- Corrigido: o Excel exportado pelo banco declara um tamanho de planilha menor que o
+  real ("A1:G13"), e só as 3 primeiras linhas de lançamento eram lidas. Agora o tamanho
+  é recalculado pelo conteúdo. Conferido nos arquivos reais (saldo anterior + entradas +
+  saídas = saldo final): FRANCE 47, MOTORS. 50, SUZUKI 30, VEICULOS 166 lançamentos.
+- Descrição: "Lançamento · Razão Social"; Ag/origem e CPF/CNPJ em linha menor (entram na busca).
+- Arquivo salvo de novo com outro período (ex.: FRANCE.xlsx do dia seguinte): o mês
+  acumula por dia; o arquivo novo atualiza só os dias que contém. Status e responsáveis
+  dos dias anteriores são mantidos.
+- Arquivo que atravessa a virada do mês: cada lançamento vai para o seu mês.
+- Contagem de lançamentos sem as linhas de saldo.
+- Na primeira abertura desta versão, a pasta inteira é lida de novo, para substituir os
+  lançamentos lidos de forma incompleta pela versão anterior.
