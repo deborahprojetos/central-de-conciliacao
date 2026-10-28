@@ -238,3 +238,14 @@ V48.13 - ANÁLISE DE PAGAMENTOS · AJUSTE AO TOTAIS PAGOS REAL
 V48.14 - ANÁLISE DE PAGAMENTOS · SEM ENTRADA MANUAL
 - Removidos da tela os quadros "Pagamentos do Itaú" e "Movimentos do Dealer" (colar e
   selecionar arquivo). Os dois lados vêm da pasta; o resumo fica no quadro "Pasta de extratos".
+
+V48.15 - EXTRATO DO MÊS · FILTROS DE PLANILHA NA TABELA
+- Cada coluna tem o botão de filtro (como no Excel): ordenar (menor/maior, A→Z/Z→A,
+  data mais antiga/recente), pesquisar e marcar/desmarcar valores com "(Selecionar tudo)".
+  Vazios sempre no fim ao ordenar. A lista de valores respeita os outros filtros.
+- Colunas: Data · Lançamento · Fornecedor (Razão Social) · Valor · Saldo · Status ·
+  Responsável (e Arquivo quando houver mais de um).
+- Filtros de Status e Responsável passaram para as colunas; no topo ficam Dia, Tipo e Buscar,
+  e "Limpar filtros da tabela". Filtros e ordenação ficam salvos por empresa.
+- Cards de soma seguem os filtros da tabela.
+- A janela do filtro abre para cima quando não cabe embaixo.

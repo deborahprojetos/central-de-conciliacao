@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Extrato do mês · Central Financeira</title>
 <link rel="stylesheet" href="../ui-premium.css">
-<link rel="stylesheet" href="styles.css?v=1.6">
+<link rel="stylesheet" href="styles.css?v=1.8">
 <link rel="stylesheet" href="../shell.css?v=2.6">
 <script src="../shell.js?v=2.6"></script>
 </head>
@@ -86,18 +86,9 @@
             <option value="saida">Saídas</option>
           </select>
         </label>
-        <label class="ex-field"><span>Status</span>
-          <select id="statusFilter">
-            <option value="">Todos</option>
-            <option value="Pendente">Pendente</option>
-            <option value="Em análise">Em análise</option>
-            <option value="-">Sem status</option>
-          </select>
-        </label>
-        <label class="ex-field"><span>Responsável</span>
-          <select id="respFilter"></select>
-        </label>
+
         <label class="ex-field ex-grow"><span>Buscar</span><input id="search" type="search" placeholder="Descrição ou responsável"></label>
+        <button type="button" id="clearCf" class="ex-btn ex-quiet" hidden>Limpar filtros da tabela</button>
         <div class="ex-counts" id="statusCounts"></div>
       </div>
       <div class="ex-table-wrap">
@@ -121,7 +112,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="core.js?v=1.7"></script>
-<script src="app.js?v=1.7"></script>
+<script src="app.js?v=1.8"></script>
 <script src="folder.js?v=1.3"></script>
 </body>
 </html>

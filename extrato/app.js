@@ -13,6 +13,12 @@
   var company = Shell ? Shell.company() : null;
   var KEY = company ? 'cf:extrato:' + company : null;
   var state = load();
+  (function migrateFilters() {
+    var ui = state.ui || (state.ui = {});
+    if (ui.status) { ui.cf = ui.cf || {}; ui.cf.status = [ui.status === '-' ? '(Sem status)' : ui.status]; }
+    if (ui.resp) { ui.cf = ui.cf || {}; ui.cf.resp = [ui.resp === '-' ? '(Vazias)' : ui.resp]; }
+    delete ui.status; delete ui.resp;
+  })();
   var pending = null; // extrato lido e ainda não salvo
 
   function esc(v) {
@@ -307,19 +313,59 @@
     });
     return type;
   }
-  function visibleRows(mo) {
-    var ui = state.ui, day = ui.day || '', st = ui.status || '', tp = ui.type || '', rp = ui.resp || '';
+  /* ---- Colunas da tabela: cada uma sabe mostrar, ordenar e filtrar (como filtro de planilha) ---- */
+  var NO_STATUS = '(Sem status)', EMPTY = '(Vazias)';
+  function srcLabelOf(mo, r) { var x = (mo.sources || {})[r.src || '']; return x ? x.label : ''; }
+  function tableCols(mo) {
+    var multi = Object.keys(mo.sources || {}).length > 1;
+    var hasParty = mo.rows.some(function (r) { return r.party; });
+    var list = [{ key: 'date', label: 'Data', kind: 'date', text: function (r) { return r.day; }, sortVal: function (r) { return dayNum(r.day); } }];
+    if (multi) list.push({ key: 'src', label: 'Arquivo', kind: 'text', text: function (r) { return srcLabelOf(mo, r) || EMPTY; } });
+    if (hasParty) {
+      list.push({ key: 'hist', label: 'Lançamento', kind: 'text', text: function (r) { return r.hist || r.desc || EMPTY; } });
+      list.push({ key: 'party', label: 'Fornecedor', kind: 'text', text: function (r) { return r.party || EMPTY; } });
+    } else {
+      list.push({ key: 'desc', label: 'Descrição', kind: 'text', text: function (r) { return r.desc || EMPTY; } });
+    }
+    mo.columns.forEach(function (c) {
+      list.push({ key: 'v:' + c.id, label: c.name, kind: 'num', col: c.id,
+        text: function (r) { var v = r.values[c.id]; return typeof v === 'number' ? brl.format(v) : EMPTY; },
+        sortVal: function (r) { var v = r.values[c.id]; return typeof v === 'number' ? v : null; } });
+    });
+    list.push({ key: 'status', label: 'Status', kind: 'text', text: function (r) { return (mo.marks[r.id] || {}).status || NO_STATUS; } });
+    list.push({ key: 'resp', label: 'Responsável', kind: 'text', text: function (r) { return (mo.marks[r.id] || {}).resp || EMPTY; } });
+    list.forEach(function (d) { if (!d.sortVal) d.sortVal = function (r) { var t = d.text(r); return t === EMPTY || t === NO_STATUS ? null : t.toLowerCase(); }; });
+    return list;
+  }
+  function colFilters() { state.ui.cf = state.ui.cf || {}; return state.ui.cf; }
+  function activeCf(exceptKey) { var cf = colFilters(); return Object.keys(cf).filter(function (k) { return k !== exceptKey && Array.isArray(cf[k]); }); }
+  function sortRows(rows, defs) {
+    var so = state.ui.sort;
+    if (!so || !so.key) return rows;
+    var d = defs.filter(function (x) { return x.key === so.key; })[0];
+    if (!d) return rows;
+    return rows.map(function (r, i) { return { r: r, i: i, v: d.sortVal(r) }; }).sort(function (a, b) {
+      if (a.v === null && b.v === null) return a.i - b.i;
+      if (a.v === null) return 1;            // vazias sempre no fim, como na planilha
+      if (b.v === null) return -1;
+      var c = typeof a.v === 'number' ? a.v - b.v : String(a.v).localeCompare(String(b.v), 'pt-BR');
+      return (c * so.dir) || a.i - b.i;
+    }).map(function (x) { return x.r; });
+  }
+
+  function visibleRows(mo, exceptKey) {
+    var ui = state.ui, day = ui.day || '', tp = ui.type || '';
     var q = $('search').value.trim().toLowerCase();
     var showSaldo = state.prefs.showSaldo !== false;
+    var defs = tableCols(mo), cf = colFilters();
+    var act = activeCf(exceptKey).map(function (k) { return { d: defs.filter(function (x) { return x.key === k; })[0], set: cf[k] }; }).filter(function (x) { return x.d; });
+    var sortedOther = state.ui.sort && state.ui.sort.key && state.ui.sort.key !== 'date';
     return mo.rows.filter(function (r) {
-      if (r.saldo && (!showSaldo || tp || st || rp)) return false;
+      if (r.saldo && (!showSaldo || tp || act.length || sortedOther || exceptKey)) return false;
       if (day && r.day !== day) return false;
       var mk = mo.marks[r.id] || {};
-      if (st === '-' && mk.status) return false;
-      if (st && st !== '-' && mk.status !== st) return false;
       if (tp && rowType(r, mo.columns) !== tp) return false;
-      if (rp === '-' && mk.resp) return false;
-      if (rp && rp !== '-' && (mk.resp || '') !== rp) return false;
+      for (var i = 0; i < act.length; i++) if (act[i].set.indexOf(act[i].d.text(r)) === -1) return false;
       if (q && (r.desc + ' ' + (r.extra || '') + ' ' + (mk.resp || '') + ' ' + (((mo.sources || {})[r.src || ''] || {}).label || '')).toLowerCase().indexOf(q) === -1) return false;
       return true;
     });
@@ -385,13 +431,6 @@
     Object.keys(state.months).forEach(function (m) { var mk = state.months[m].marks || {}; Object.keys(mk).forEach(function (k) { if (mk[k].resp) resp[mk[k].resp] = 1; }); });
     var names = Object.keys(resp).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); });
     $('respList').innerHTML = names.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
-    var monthResp = {};
-    Object.keys(mo.marks).forEach(function (k) { if (mo.marks[k].resp) monthResp[mo.marks[k].resp] = 1; });
-    if (state.ui.resp && state.ui.resp !== '-' && !monthResp[state.ui.resp]) state.ui.resp = '';
-    $('respFilter').innerHTML = '<option value="">Todos</option><option value="-"' + (state.ui.resp === '-' ? ' selected' : '') + '>Sem responsável</option>' +
-      Object.keys(monthResp).sort(function (a, b) { return a.localeCompare(b, 'pt-BR'); }).map(function (n) {
-        return '<option value="' + esc(n) + '"' + (n === state.ui.resp ? ' selected' : '') + '>' + esc(n) + '</option>';
-      }).join('');
   }
 
   function render() {
@@ -423,7 +462,7 @@
       return '<button type="button" class="ex-chip' + (on ? ' is-on' : '') + '" aria-pressed="' + on + '" data-key="' + esc(o.key) + '">' + esc(o.label) + '</button>';
     }).join('');
     var monthBase = sumBase(mo.rows), visBase = sumBase(visibleRows(mo));
-    var filtered = !!(state.ui.day || state.ui.status || state.ui.type || state.ui.resp || $('search').value.trim());
+    var filtered = !!(state.ui.day || state.ui.type || activeCf().length || $('search').value.trim());
     var chosen = opts.filter(function (o) { return sel.indexOf(o.key) !== -1; });
     var scope = state.ui.day ? 'dia ' + state.ui.day : monthLabel(state.lastMonth);
     var cards = '';
@@ -448,35 +487,45 @@
     $('statusCounts').innerHTML = '<span class="ex-badge is-pend">' + nP + ' pendente' + (nP === 1 ? '' : 's') + '</span><span class="ex-badge is-ana">' + nA + ' em análise</span>';
 
     updateRespOptions(mo);
-    $('statusFilter').value = state.ui.status || '';
     $('typeFilter').value = state.ui.type || '';
+    $('clearCf').hidden = !(activeCf().length || (state.ui.sort && state.ui.sort.key));
 
     // Tabela
     var cols = mo.columns;
     var srcKeys = Object.keys(mo.sources || {});
     var multi = srcKeys.length > 1;
-    var srcLabel = function (r) { var x = (mo.sources || {})[r.src || '']; return x ? x.label : ''; };
-    $('thead').innerHTML = '<tr><th>Data</th>' + (multi ? '<th>Arquivo</th>' : '') + '<th>Descrição</th>' + cols.map(function (c) { return '<th class="num">' + esc(c.name) + '</th>'; }).join('') + '<th>Status</th><th>Responsável</th></tr>';
-    var rows = visibleRows(mo);
+    var defs = tableCols(mo), cf = colFilters(), so = state.ui.sort || {};
+    $('thead').innerHTML = '<tr>' + defs.map(function (d) {
+      var on = Array.isArray(cf[d.key]), sorted = so.key === d.key;
+      var icon = sorted ? (so.dir > 0 ? '↑' : '↓') : '';
+      return '<th class="' + (d.kind === 'num' ? 'num' : '') + '"><div class="th-in"><span>' + esc(d.label) + '</span>' +
+        '<button type="button" class="ex-fbtn' + (on ? ' is-filter' : '') + (sorted ? ' is-sort' : '') + '" data-key="' + esc(d.key) + '" aria-haspopup="dialog" aria-label="Filtrar e ordenar ' + esc(d.label) + '" title="Filtrar e ordenar">' +
+        (icon ? '<b>' + icon + '</b>' : '') + (on ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3-1.5v-3Z" fill="currentColor"/></svg>' : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>') +
+        '</button></div></th>';
+    }).join('') + '</tr>';
+    var rows = sortRows(visibleRows(mo), defs);
     $('tbody').innerHTML = rows.map(function (r) {
       var mk = mo.marks[r.id] || {};
       var cls = mk.status === 'Pendente' ? 'st-pend' : mk.status === 'Em análise' ? 'st-ana' : '';
-      return '<tr data-id="' + r.id + '" class="' + cls + (r.saldo ? ' is-saldo' : '') + '"><td class="date">' + esc(r.day) + '</td>' + (multi ? '<td class="src">' + esc(srcLabel(r)) + '</td>' : '') + '<td class="desc">' + esc(r.desc) + (r.extra ? '<small>' + esc(r.extra) + '</small>' : '') + '</td>' +
-        cols.map(function (c) {
-          var v = r.values[c.id];
-          return '<td class="num' + (v < 0 ? ' is-neg' : '') + '">' + (typeof v === 'number' ? brl.format(v) : '') + '</td>';
-        }).join('') +
-        '<td><select class="ex-status" aria-label="Status"><option value="">—</option>' + STATUSES.map(function (s) {
-          return '<option' + (mk.status === s ? ' selected' : '') + '>' + s + '</option>';
-        }).join('') + '</select></td>' +
-        '<td><input class="ex-resp" type="text" list="respList" maxlength="60" value="' + esc(mk.resp || '') + '" aria-label="Responsável"></td></tr>';
+      return '<tr data-id="' + r.id + '" class="' + cls + (r.saldo ? ' is-saldo' : '') + '">' + defs.map(function (d) {
+        if (d.key === 'date') return '<td class="date">' + esc(r.day) + '</td>';
+        if (d.key === 'src') return '<td class="src">' + esc(srcLabelOf(mo, r)) + '</td>';
+        if (d.key === 'hist') return '<td class="desc">' + esc(r.hist || r.desc) + (r.party ? '' : (r.extra ? '<small>' + esc(r.extra) + '</small>' : '')) + '</td>';
+        if (d.key === 'party') return '<td class="party">' + esc(r.party || '') + (r.party && r.extra ? '<small>' + esc(r.extra) + '</small>' : '') + '</td>';
+        if (d.key === 'desc') return '<td class="desc">' + esc(r.desc) + (r.extra ? '<small>' + esc(r.extra) + '</small>' : '') + '</td>';
+        if (d.kind === 'num') { var v = r.values[d.col]; return '<td class="num' + (v < 0 ? ' is-neg' : '') + '">' + (typeof v === 'number' ? brl.format(v) : '') + '</td>'; }
+        if (d.key === 'status') return '<td><select class="ex-status" aria-label="Status"><option value="">—</option>' + STATUSES.map(function (st) {
+          return '<option' + (mk.status === st ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></td>';
+        return '<td><input class="ex-resp" type="text" list="respList" maxlength="60" value="' + esc(mk.resp || '') + '" aria-label="Responsável"></td>';
+      }).join('') + '</tr>';
     }).join('');
     $('emptyRows').hidden = rows.length > 0;
     var footBase = sumBase(rows);
-    var onlyDay = !(state.ui.status || state.ui.type || state.ui.resp || $('search').value.trim());
+    var onlyDay = !(state.ui.type || activeCf().length || $('search').value.trim());
+    var lead = defs.filter(function (d) { return d.kind !== 'num' && d.key !== 'status' && d.key !== 'resp'; }).length;
     var footBal = onlyDay ? balances(mo, state.ui.day || '') : null;
     var firstSaldo = true;
-    $('tfoot').innerHTML = rows.length ? '<tr><td colspan="' + (multi ? 3 : 2) + '">Total da seleção' + (footBal ? '<small>Saldo: fim ' + (state.ui.day ? 'do dia ' + esc(state.ui.day) : 'do período') + '</small>' : '') + '</td>' + cols.map(function (c) {
+    $('tfoot').innerHTML = rows.length ? '<tr><td colspan="' + lead + '">Total da seleção' + (footBal ? '<small>Saldo: fim ' + (state.ui.day ? 'do dia ' + esc(state.ui.day) : 'do período') + '</small>' : '') + '</td>' + cols.map(function (c) {
       var t = null;
       if (c.saldo) { if (footBal && firstSaldo) { t = footBal.end; firstSaldo = false; } }
       else t = Core.applySum({ col: c.id, mode: 'all' }, footBase);
@@ -484,6 +533,93 @@
     }).join('') + '<td colspan="2"></td></tr>' : '';
     $('rowCount').textContent = rows.length + ' de ' + mo.rows.length + ' lançamentos · ' + (multi ? srcKeys.length + ' arquivos' : mo.fileName);
   }
+
+  /* ---- Janela do filtro de coluna ---- */
+  var pop = null, popKey = null, popBtn = null;
+  function closePop() { if (pop) { pop.hidden = true; } if (popBtn) popBtn.setAttribute('aria-expanded', 'false'); popKey = null; popBtn = null; }
+  function openPop(key, btn) {
+    var mo = current(); if (!mo) return;
+    if (popKey === key) { closePop(); return; }
+    var d = tableCols(mo).filter(function (x) { return x.key === key; })[0]; if (!d) return;
+    if (!pop) {
+      pop = document.createElement('div'); pop.className = 'ex-pop'; pop.id = 'colPop'; pop.setAttribute('role', 'dialog');
+      document.body.appendChild(pop);
+      pop.addEventListener('click', onPopClick);
+      pop.addEventListener('input', onPopInput);
+      pop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { var b = popBtn; closePop(); if (b) b.focus(); } if (e.key === 'Enter' && e.target.classList.contains('pop-search')) { e.preventDefault(); applyPop(); } });
+    }
+    popKey = key; popBtn = btn; btn.setAttribute('aria-expanded', 'true');
+    // Valores possíveis considerando os outros filtros (como na planilha).
+    var base = visibleRows(mo, key).filter(function (r) { return !r.saldo; });
+    var count = {}, vals = [];
+    base.forEach(function (r) { var t = d.text(r); if (!count[t]) { count[t] = 0; vals.push({ t: t, s: d.sortVal(r) }); } count[t]++; });
+    vals.sort(function (a, b) {
+      if (a.s === null) return 1; if (b.s === null) return -1;
+      return typeof a.s === 'number' ? a.s - b.s : String(a.s).localeCompare(String(b.s), 'pt-BR');
+    });
+    var cur = colFilters()[key];
+    var labels = d.kind === 'num' ? ['Menor para maior', 'Maior para menor'] : d.kind === 'date' ? ['Mais antiga primeiro', 'Mais recente primeiro'] : ['Ordenar de A a Z', 'Ordenar de Z a A'];
+    var so = state.ui.sort || {};
+    pop.innerHTML = '<div class="pop-title">' + esc(d.label) + '</div>' +
+      '<div class="pop-sort"><button type="button" data-sort="1" class="' + (so.key === key && so.dir > 0 ? 'is-on' : '') + '">↑ ' + labels[0] + '</button>' +
+      '<button type="button" data-sort="-1" class="' + (so.key === key && so.dir < 0 ? 'is-on' : '') + '">↓ ' + labels[1] + '</button></div>' +
+      '<input type="search" class="pop-search" placeholder="Pesquisar" aria-label="Pesquisar valores">' +
+      '<label class="pop-all"><input type="checkbox"' + (!cur ? ' checked' : '') + '> (Selecionar tudo)</label>' +
+      '<div class="pop-list">' + vals.slice(0, 1500).map(function (v) {
+        var on = !cur || cur.indexOf(v.t) !== -1;
+        return '<label data-t="' + esc(v.t.toLowerCase()) + '"><input type="checkbox" value="' + esc(v.t) + '"' + (on ? ' checked' : '') + '><span>' + esc(v.t) + '</span><em>' + count[v.t] + '</em></label>';
+      }).join('') + (vals.length ? '' : '<p class="pop-empty">Nenhum valor</p>') + '</div>' +
+      '<div class="pop-actions"><button type="button" class="pop-clear">Limpar filtro</button><button type="button" class="pop-ok">OK</button></div>';
+    pop.hidden = false;
+    // Abre embaixo do botão; se não couber, abre em cima; sempre dentro da tela.
+    var rc = btn.getBoundingClientRect(), w = pop.offsetWidth || 280, h = pop.offsetHeight, vh = window.innerHeight;
+    pop.style.left = Math.max(8, Math.min(rc.right - w, window.innerWidth - w - 8)) + 'px';
+    var top = rc.bottom + 6;
+    if (top + h > vh - 8) top = rc.top - h - 6 >= 8 ? rc.top - h - 6 : Math.max(8, vh - h - 8);
+    pop.style.top = top + 'px';
+    syncAll();
+    pop.querySelector('.pop-search').focus();
+  }
+  function popBoxes(onlyVisible) {
+    return Array.prototype.filter.call(pop.querySelectorAll('.pop-list input[type=checkbox]'), function (c) { return !onlyVisible || !c.parentNode.hidden; });
+  }
+  function syncAll() {
+    var vis = popBoxes(true), all = pop.querySelector('.pop-all input');
+    all.checked = vis.length > 0 && vis.every(function (c) { return c.checked; });
+    all.indeterminate = !all.checked && vis.some(function (c) { return c.checked; });
+  }
+  function onPopInput(e) {
+    if (e.target.classList.contains('pop-search')) {
+      var q = e.target.value.trim().toLowerCase();
+      Array.prototype.forEach.call(pop.querySelectorAll('.pop-list label'), function (l) { l.hidden = q && l.getAttribute('data-t').indexOf(q) === -1; });
+      // Na planilha, ao pesquisar, ficam marcados só os itens encontrados.
+      if (q) popBoxes(false).forEach(function (c) { c.checked = !c.parentNode.hidden; });
+      syncAll();
+    }
+  }
+  function onPopClick(e) {
+    var t = e.target;
+    if (t.closest('[data-sort]')) {
+      var dir = Number(t.closest('[data-sort]').getAttribute('data-sort'));
+      var so = state.ui.sort || {};
+      state.ui.sort = (so.key === popKey && so.dir === dir) ? null : { key: popKey, dir: dir };
+      save(); closePop(); render(); return;
+    }
+    if (t.closest('.pop-all') && t.tagName === 'INPUT') { popBoxes(true).forEach(function (c) { c.checked = t.checked; }); syncAll(); return; }
+    if (t.tagName === 'INPUT' && t.closest('.pop-list')) { syncAll(); return; }
+    if (t.closest('.pop-clear')) { delete colFilters()[popKey]; save(); closePop(); render(); return; }
+    if (t.closest('.pop-ok')) applyPop();
+  }
+  function applyPop() {
+    var boxes = popBoxes(false), searching = pop.querySelector('.pop-search').value.trim();
+    var chosen = boxes.filter(function (c) { return c.checked && (!searching || !c.parentNode.hidden); }).map(function (c) { return c.value; });
+    if (!searching && chosen.length === boxes.length) delete colFilters()[popKey];
+    else colFilters()[popKey] = chosen;
+    save(); closePop(); render();
+  }
+  document.addEventListener('mousedown', function (e) { if (pop && !pop.hidden && !pop.contains(e.target) && !e.target.closest('.ex-fbtn')) closePop(); });
+  window.addEventListener('resize', closePop);
+  document.addEventListener('scroll', function (e) { if (pop && !pop.hidden && !pop.contains(e.target)) closePop(); }, true);
 
   function setMark(id, patch) {
     var mo = current(); if (!mo) return;
@@ -501,9 +637,9 @@
   $('cancelImport').addEventListener('click', function () { pending = null; $('preview').hidden = true; $('fileName').textContent = 'Nenhum arquivo selecionado'; });
   $('monthSelect').addEventListener('change', function (e) { state.lastMonth = e.target.value; state.ui.day = ''; message(''); save(); render(); });
   $('daySelect').addEventListener('change', function (e) { state.ui.day = e.target.value; save(); render(); });
-  $('statusFilter').addEventListener('change', function (e) { state.ui.status = e.target.value; save(); render(); });
   $('typeFilter').addEventListener('change', function (e) { state.ui.type = e.target.value; save(); render(); });
-  $('respFilter').addEventListener('change', function (e) { state.ui.resp = e.target.value; save(); render(); });
+  $('clearCf').addEventListener('click', function () { state.ui.cf = {}; state.ui.sort = null; save(); closePop(); render(); });
+  $('thead').addEventListener('click', function (e) { var b = e.target.closest('.ex-fbtn'); if (b) openPop(b.getAttribute('data-key'), b); });
   var searchTimer = null;
   $('search').addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(render, 200); });
   $('ignoreSaldo').addEventListener('change', function (e) { state.prefs.showSaldo = e.target.checked; save(); render(); });
@@ -522,7 +658,7 @@
       var mo = current(), nP = 0, nA = 0;
       mo.rows.forEach(function (r) { var s = (mo.marks[r.id] || {}).status; if (s === 'Pendente') nP++; else if (s === 'Em análise') nA++; });
       $('statusCounts').innerHTML = '<span class="ex-badge is-pend">' + nP + ' pendente' + (nP === 1 ? '' : 's') + '</span><span class="ex-badge is-ana">' + nA + ' em análise</span>';
-      if (state.ui.status) render();
+      if (Array.isArray(colFilters().status) || (state.ui.sort && state.ui.sort.key === 'status')) render();
     } else if (e.target.classList.contains('ex-resp')) {
       setMark(tr.getAttribute('data-id'), { resp: e.target.value.trim() });
       updateRespOptions(current());
