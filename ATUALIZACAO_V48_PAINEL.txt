@@ -234,3 +234,7 @@ V48.13 - ANÁLISE DE PAGAMENTOS · AJUSTE AO TOTAIS PAGOS REAL
   12 conciliados, 6 para revisar (valor exato), 3 sem correspondência
   (BANCO VOLKSWAGEN 1.923,80; NASA VEICULOS LTDA 208.000,00; DETRAN 234,78 = diferença
   exata de 210.158,58 entre os arquivos).
+
+V48.14 - ANÁLISE DE PAGAMENTOS · SEM ENTRADA MANUAL
+- Removidos da tela os quadros "Pagamentos do Itaú" e "Movimentos do Dealer" (colar e
+  selecionar arquivo). Os dois lados vêm da pasta; o resumo fica no quadro "Pasta de extratos".
