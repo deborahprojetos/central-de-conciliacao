@@ -205,5 +205,14 @@ $('statusFilter').onchange=render;
 $('clearFilters').onclick=()=>{$('search').value='';$('statusFilter').value='';render()};
 // Exposto apenas para validação técnica/regressão do parser.
 window.MVPParsers={parseItauText:parseI,mapDealerRows:mapD};
+// V48.12: carga automática pela pasta (extrato da empresa × TOTAIS PAGOS), mesma conciliação.
+window.MVPAuto={
+ load:(itau,dealer,info)=>{S.i=itau||[];S.d=dealer||[];S.r=null;
+  $('itauStatus').textContent=`${S.i.length} pagamentos do extrato · ${brl(S.i.reduce((s,x)=>s+x.value,0))}`+(info&&info.itau?` · ${info.itau}`:'');
+  $('dealerStatus').textContent=`${S.d.length} títulos do Dealer · ${brl(S.d.reduce((s,x)=>s+x.value,0))}`+(info&&info.dealer?` · ${info.dealer}`:'');
+  $('results').classList.add('hidden');updateAnalyzeState();},
+ analyze:()=>{if(S.i.length&&S.d.length)return $('analyze').onclick();},
+ mapDealer:mapD
+};
 updateAnalyzeState();
 })();

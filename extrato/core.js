@@ -370,7 +370,9 @@
       if (!d && !desc) return;
       var sig = last.dd + '/' + last.mm + '|' + desc + '|' + JSON.stringify(values);
       occ[sig] = (occ[sig] || 0) + 1;
-      rows.push({ id: hash(sig + '#' + occ[sig]), dd: last.dd, mm: last.mm, yyyy: last.yyyy, desc: desc, extra: extra, values: values, saldo: /\bsaldo\b/i.test(desc) });
+      var docOf = function (re) { var k = docCols.filter(function (x) { return re.test(header[x] || ''); })[0]; return k === undefined ? '' : cellText(r[k]); };
+      rows.push({ id: hash(sig + '#' + occ[sig]), dd: last.dd, mm: last.mm, yyyy: last.yyyy, desc: desc, extra: extra, values: values, saldo: /\bsaldo\b/i.test(desc),
+        hist: txt(descCols), party: txt(nameCols), taxId: docOf(/cpf|cnpj/i), origin: docOf(/origem|ag/i) });
     });
     columns.forEach(function (c) { delete c._k; });
 

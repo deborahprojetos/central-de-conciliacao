@@ -205,3 +205,32 @@ V48.11 - EXTRATO DO MÊS · SALDO CORRETO E CARDS PELOS FILTROS
 - "Ignorar linhas de saldo" virou "Mostrar linhas de saldo na tabela" (as somas nunca
   incluem linhas de saldo).
 - SALDO ANTERIOR com a mesma data do primeiro lançamento é tratado como saldo do início do dia.
+
+V48.12 - ANÁLISE DE PAGAMENTOS · AUTOMÁTICA PELA PASTA (shell 2.6)
+- A Análise de pagamentos usa a mesma pasta conectada no Extrato do mês e roda sozinha
+  ao abrir a tela (ou em "Atualizar da pasta"):
+  · Itaú: as saídas (valores negativos) do extrato da empresa escolhida
+    (ex.: VEICULOS.xlsx). Data, Lançamento, Ag/origem, Razão Social, CPF/CNPJ e Valor
+    entram nos mesmos campos da colagem manual.
+  · Dealer: o arquivo TOTAIS PAGOS da pasta, filtrado pela empresa (coluna
+    TituloEmpresaNome, com escolha em "Empresa no TOTAIS PAGOS"; ex.: Veículos →
+    NASA VEICULOS LTDA, sem misturar NASA FRANCE VEICULOS LTDA). Só títulos do período
+    do extrato (até 3 dias depois).
+- Dias: "Último extrato", "Todos os dias da pasta" ou um dia específico.
+- Mesma lógica de conciliação da tela (IntelligentReconciler). Colar ou selecionar
+  arquivo continua funcionando.
+- Resultado gravado nos indicadores da empresa escolhida (separado por empresa).
+- Vários extratos da mesma conta (VEICULOS.xls e .xlsx): cada dia vem do arquivo mais novo.
+- Trocar a empresa recarrega a tela com o extrato da empresa nova.
+- Painel: "não encontrados" da Análise de pagamentos agora é contado corretamente.
+
+V48.13 - ANÁLISE DE PAGAMENTOS · AJUSTE AO TOTAIS PAGOS REAL
+- Filiais: o TOTAIS PAGOS traz a empresa por filial (NASA VEICULOS - SLMB / - ANPS / - ITB).
+  O padrão agora é "Veículos · 3 filiais" (todas as filiais da empresa); dá para escolher
+  uma filial ou "Todas do arquivo".
+- Dias: o padrão é "Dias do TOTAIS PAGOS" — compara só as saídas do extrato nos mesmos
+  dias do arquivo do Dealer (ex.: 27/10), sem marcar como pendente o dia que o Dealer não trouxe.
+- Conferido com VEICULOS.xlsx + TOTAIS_PAGOS.xlsx reais (27/10): 21 saídas × 19 títulos →
+  12 conciliados, 6 para revisar (valor exato), 3 sem correspondência
+  (BANCO VOLKSWAGEN 1.923,80; NASA VEICULOS LTDA 208.000,00; DETRAN 234,78 = diferença
+  exata de 210.158,58 entre os arquivos).

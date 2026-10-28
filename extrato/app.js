@@ -171,7 +171,8 @@
     var rows = parsed.rows.map(function (r) {
       var values = {};
       Object.keys(r.values).forEach(function (k) { values[remap[k]] = r.values[k]; });
-      return { id: r.id + tag, date: r.dd + '/' + r.mm + '/' + (r.yyyy || yyyy), day: r.dd + '/' + r.mm, desc: r.desc, extra: r.extra || '', values: values, saldo: r.saldo, src: src };
+      return { id: r.id + tag, date: r.dd + '/' + r.mm + '/' + (r.yyyy || yyyy), day: r.dd + '/' + r.mm, desc: r.desc, extra: r.extra || '', values: values, saldo: r.saldo, src: src,
+        hist: r.hist || '', party: r.party || '', taxId: r.taxId || '', origin: r.origin || '' };
     });
 
     // Mesmo extrato em outro arquivo (ex.: .xls e .xlsx, ou versão mais completa): não soma duas vezes.

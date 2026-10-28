@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '2.5';
+  var VERSION = '2.6';
   var root = document.documentElement;
   root.classList.add('cf-shell');
 
@@ -148,6 +148,7 @@
     var m = String(text || '').replace(/\./g, '').match(/-?\d+/);
     return m ? parseInt(m[0], 10) : 0;
   }
+  function countOf(text, re) { var m = re.exec(String(text || '')); return m ? parseInt10(m[1]) : parseInt10(text); }
   function txt(id) { var el = document.getElementById(id); return el ? el.textContent.trim() : ''; }
 
   // Como ler o resultado de cada aplicação (ids existentes nas páginas).
@@ -157,7 +158,7 @@
       read: function () {
         return {
           itauCount: parseInt10(txt('ki')), itauValue: parseMoney(txt('kiv')),
-          ok: parseInt10(txt('ko')), pending: parseInt10(txt('kd')), missing: parseInt10(txt('km')),
+          ok: parseInt10(txt('ko')), pending: parseInt10(txt('kd')), missing: countOf(txt('km'), /(\d[\d.]*)\s+n[aã]o\s+(?:encontrad|localizad)/i),
           dealerCount: parseInt10(txt('kde')), dealerValue: parseMoney(txt('kdev'))
         };
       },
@@ -319,7 +320,7 @@
   }
 
   /* ---------------- Escolha da empresa (barra dentro da tela) ---------------- */
-  var RELOAD_ON_SWITCH = { difal: true, extrato: true };
+  var RELOAD_ON_SWITCH = { difal: true, extrato: true, 'itau-mvp': true };
   function escHtml(v) { return String(v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   var MAX_BUTTONS = 6;
