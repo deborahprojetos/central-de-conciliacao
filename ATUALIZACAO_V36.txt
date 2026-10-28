@@ -1,6 +1,0 @@
-V36 — Conciliação de pagamentos Itaú × Dealer
-- Importa Razão Social, CPF/CNPJ e Valor, inclusive em tabelas sem coluna Data; CNPJ do Itaú fica visível e exportado, sem pressupor que o Dealer o possua.
-- Concilia valores diretos ou somas de títulos do mesmo favorecido; divergência de favorecido e combinações ambíguas ficam em Revisar.
-- Preserva títulos repetidos como registros separados e impede reutilização.
-- Exibe títulos e credores Dealer vinculados no detalhe de cada pagamento e exporta as referências ao Excel.
-- Mantém as quatro aplicações e o fluxo original de recebimentos por título.
