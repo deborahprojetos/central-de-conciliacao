@@ -412,7 +412,7 @@
     if (!saldoCols.length) return null;
     var bySrc = {};
     mo.rows.forEach(function (r) { (bySrc[r.src || ''] = bySrc[r.src || ''] || []).push(r); });
-    var out = { start: 0, end: 0, ok: true, gaps: [], accounts: 0 };
+    var out = { start: 0, end: 0, ok: true, gaps: [], accounts: 0, parts: [] };
     var r2 = function (v) { return Math.round(v * 100) / 100; };
     Object.keys(bySrc).forEach(function (k) {
       var rows = bySrc[k];
@@ -453,6 +453,8 @@
       var firstMov = movDays.length ? Math.min.apply(null, movDays) : refDays[0] + 1;
       var d = day ? dayNum(day) : lastDay;
       var start = day ? endOf(d - 1) : endOf(firstMov - 1);
+      var srcInfo = (mo.sources || {})[k] || {};
+      out.parts.push({ label: srcInfo.account ? 'conta ' + srcInfo.account : (srcInfo.label || 'conta'), end: endOf(d) });
       out.start += start; out.end += endOf(d); out.accounts++;
     });
     if (!out.accounts) return null;
@@ -508,7 +510,8 @@
         ? '<small class="is-ok">Confere com o saldo do banco</small>'
         : '<small class="is-warn">Não fecha ' + bal.gaps.map(function (g) { return 'de ' + dd(g.from) + ' a ' + dd(g.to) + ' (' + brl.format(g.diff) + ')'; }).join('; ') + ': falta lançamento ou arquivo</small>';
       cards += '<div class="ex-total ex-balance"><span>Saldo inicial</span><strong>' + brl.format(bal.start) + '</strong><small>Início ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + (bal.accounts > 1 ? ' · ' + bal.accounts + ' contas' : '') + '</small></div>';
-      cards += '<div class="ex-total ex-balance"><span>Saldo final</span><strong class="' + (bal.end < 0 ? 'is-neg' : '') + '">' + brl.format(bal.end) + '</strong><small>Fim ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + '</small>' + check + '</div>';
+      var perAcct = bal.parts.length > 1 ? bal.parts.map(function (x) { return '<small class="ex-acct">' + esc(x.label) + ': ' + brl.format(x.end) + '</small>'; }).join('') : '';
+      cards += '<div class="ex-total ex-balance"><span>Saldo final</span><strong class="' + (bal.end < 0 ? 'is-neg' : '') + '">' + brl.format(bal.end) + '</strong><small>Fim ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + '</small>' + perAcct + check + '</div>';
     }
     cards += chosen.map(function (o) {
       var total = Core.applySum(o, visBase);

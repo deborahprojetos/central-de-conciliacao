@@ -274,3 +274,16 @@ V48.18 - EXTRATO DO MÊS · SALDO CORRETO COM VÁRIOS ARQUIVOS
   o banco (Veículos 28/10 432.099,15; France 116.874,52; Motors 202.610,11; Suzuki 27/10
   85.349,68) e Veículos com 228 lançamentos, entradas 1.757.521,86, saídas 1.997.987,72.
 - Na primeira abertura, a pasta é lida de novo para corrigir os dados já importados.
+
+V48.19 - EXTRATO DO MÊS · ARQUIVO NA EMPRESA ERRADA E PDF DO ITAÚ BBA
+- Causa do saldo 746.883,31 / 517.448,83 na Veículos: o EXTRATO MOTOS (conta 5453/0099035-9,
+  Suzuki) estava vinculado à Veículos ("Lembrar"), somando o saldo de 85.349,68.
+- "Arquivos da pasta": a coluna Empresa virou uma lista; trocar a empresa move os dados do
+  arquivo (e da conta dele) para a empresa certa e corrige o "Lembrar".
+- Card "Saldo final": com mais de uma conta, mostra o saldo de cada conta.
+- Arquivo sem empresa no nome (ex.: 1_Extrato.pdf) vai para a empresa que já tem a mesma
+  agência/conta.
+- PDF do Itaú BBA: colunas Lançamentos / Razão Social / CNPJ-CPF lidas pelo cabeçalho;
+  células em 2 ou 3 linhas montadas corretamente (ex.: "IFOOD PAGO INSTITUICAO DE PAGAMENTO
+  S.A."). Conferido: 62 lançamentos de 28/10, saldo 661.533,63 → 432.099,15.
+- A pasta é lida de novo na primeira abertura.

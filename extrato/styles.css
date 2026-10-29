@@ -151,3 +151,5 @@ body { margin: 0; color: var(--ex-ink); background: #f3f6fb; font-family: Inter,
 .pop-actions button { min-height: 34px; padding: 6px 12px; border: 1px solid #d6deec; border-radius: 8px; color: var(--ex-navy); background: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .pop-actions .pop-ok { border-color: var(--ex-navy); color: #fff; background: var(--ex-navy); min-width: 80px; }
 .ex-pop { max-height: calc(100vh - 16px); overflow-y: auto; }
+.ex-total small.ex-acct { color: #46546d; font-weight: 600; }
+.fd-move { min-height: 30px; padding: 3px 8px; border: 1px solid #d6deec; border-radius: 7px; font: inherit; font-size: 12.5px; background: #fff; }

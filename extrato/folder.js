@@ -14,7 +14,7 @@
   var MAP_KEY = 'cf:extrato:mapa';
   var POLL_MS = 120000;
   // Quando a leitura dos arquivos melhora, a pasta inteira é lida de novo uma vez.
-  var READER_VERSION = '1.8';
+  var READER_VERSION = '1.9';
 
   var dir = null, granted = false, scanning = false, timer = null;
   var handles = {};   // caminho → FileSystemFileHandle (nesta sessão)
@@ -87,6 +87,21 @@
     return out;
   }
 
+  // Empresa que já tem esta agência/conta nos extratos importados.
+  function companyOfAccount(acct) {
+    if (!acct) return null;
+    var found = null;
+    Shell.COMPANIES.forEach(function (c) {
+      if (found) return;
+      var st = getJSON('cf:extrato:' + c.id, null);
+      if (!st || !st.months) return;
+      Object.keys(st.months).forEach(function (m) {
+        var src = (st.months[m] || {}).sources || {};
+        Object.keys(src).forEach(function (k) { if (src[k] && src[k].account === acct) found = c.id; });
+      });
+    });
+    return found;
+  }
   function identify(entry, parsed) {
     var mp = mapa();
     if (parsed && parsed.account && mp.contas[parsed.account] && Shell.companyById(mp.contas[parsed.account])) return { company: mp.contas[parsed.account], by: 'conta' };
@@ -102,6 +117,8 @@
       var f = Shell.companyByName(entry.folders[i]);
       if (f) return { company: f.id, by: 'pasta' };
     }
+    var byAcct = parsed && companyOfAccount(parsed.account);
+    if (byAcct) return { company: byAcct, by: 'conta' };
     return { company: null, suggestion: base };
   }
 
@@ -290,8 +307,12 @@
     var order = { aguardando: 0, erro: 1, duplicado: 2, ok: 3, ignorado: 4 };
     var labels = { ok: 'Importado', aguardando: 'Aguardando', duplicado: 'Duplicado', ignorado: 'Ignorado', erro: 'Erro' };
     files.sort(function (a, b) { return (order[a.status] - order[b.status]) || a.path.localeCompare(b.path, 'pt-BR'); });
+    var coOpts = function (sel) { return Shell.COMPANIES.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join(''); };
     $('folderFiles').innerHTML = files.map(function (r) {
-      return '<tr class="fd-' + r.status + '"><td>' + esc(r.path) + '</td><td>' + esc(r.company ? Shell.companyName(r.company) : '—') + '</td><td>' + esc(r.month ? r.month.split(',').map(App.monthLabel).join(', ') : '—') + '</td><td><span class="fd-tag">' + labels[r.status] + '</span></td><td>' + esc(r.msg || '') + '</td></tr>';
+      var coCell = (r.status === 'ok' || r.status === 'duplicado') && r.company
+        ? '<select class="fd-move" data-path="' + esc(r.path) + '" aria-label="Empresa do arquivo">' + coOpts(r.company) + '</select>'
+        : esc(r.company ? Shell.companyName(r.company) : '—');
+      return '<tr class="fd-' + r.status + '"><td>' + esc(r.path) + '</td><td>' + coCell + '</td><td>' + esc(r.month ? r.month.split(',').map(App.monthLabel).join(', ') : '—') + '</td><td><span class="fd-tag">' + labels[r.status] + '</span></td><td>' + esc(r.msg || '') + '</td></tr>';
     }).join('');
     $('folderDetails').hidden = !files.length;
   }
@@ -352,6 +373,38 @@
     renderBox();
   }
 
+  // Move um arquivo (e a conta dele) para outra empresa: tira os dados da empresa errada,
+  // corrige o "Lembrar" e importa de novo na empresa certa.
+  async function moveFile(path, to) {
+    var idx = index(), rec = idx.files[path];
+    if (!rec || !rec.company || rec.company === to) return;
+    var from = rec.company, name = path.split('/').pop();
+    if (!window.confirm('Mover ' + name + ' de ' + Shell.companyName(from) + ' para ' + Shell.companyName(to) + '?')) { renderBox(); return; }
+    var keys = ['pasta:' + path];
+    if (rec.account) keys.push('conta:' + rec.account);
+    var st = getJSON('cf:extrato:' + from, null);
+    if (st && st.months) {
+      Object.keys(st.months).forEach(function (m) {
+        var mo = st.months[m];
+        var src = mo.sources || {};
+        Object.keys(src).forEach(function (k) { if (rec.account && src[k] && src[k].account === rec.account && keys.indexOf(k) === -1) keys.push(k); });
+        mo.rows = mo.rows.filter(function (r) { return keys.indexOf(r.src || '') === -1; });
+        keys.forEach(function (k) { delete src[k]; });
+        if (!mo.rows.length) delete st.months[m];
+      });
+      if (!st.months[st.lastMonth]) st.lastMonth = Object.keys(st.months).sort().reverse()[0] || '';
+      setJSON('cf:extrato:' + from, st);
+    }
+    var mp = mapa();
+    mp.arquivos[Shell.slug(companyPart(name))] = to;
+    if (rec.account) mp.contas[rec.account] = to;
+    setJSON(MAP_KEY, mp);
+    rec.sig = ''; idx.files[path] = rec; setJSON(INDEX_KEY, idx);
+    if (App.company() === from || App.company() === to) App.reload();
+    await scan(false);
+    if (App.company() === from || App.company() === to) App.reload();
+  }
+
   /* ---------------- Eventos ---------------- */
   $('folderConnect').addEventListener('click', connect);
   $('folderAllow').addEventListener('click', allow);
@@ -365,6 +418,9 @@
     Shell.refreshCompanies();
     retryPending(true);
     renderBox();
+  });
+  $('folderFiles').addEventListener('change', function (e) {
+    if (e.target.classList.contains('fd-move')) moveFile(e.target.getAttribute('data-path'), e.target.value);
   });
   $('folderPending').addEventListener('click', function (e) {
     var li = e.target.closest('li[data-path]'); if (!li) return;

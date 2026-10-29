@@ -177,39 +177,83 @@
       return { id: 'c' + i, name: name, saldo: /saldo/i.test(name) };
     });
 
-    // 4) Lançamentos.
-    var rows = [], lastDate = null, lastRow = null, occ = {};
-    lines.forEach(function (l) {
+    // 4) Colunas de texto pelo cabeçalho (Lançamentos, Razão Social, CNPJ/CPF...).
+    var textCols = [];
+    if (headerLine) {
+      var moneyLeft = Math.min.apply(null, cols.map(function (g) { return g.min; })) - 75;
+      var words = headerLine.cells.filter(function (c) { return c.kind === 'text' && c.x1 < moneyLeft; });
+      words.forEach(function (w) {
+        var last = textCols[textCols.length - 1];
+        if (last && w.x0 - last.x1 < 9) { last.label += ' ' + w.t; last.x1 = w.x1; }
+        else textCols.push({ label: w.t, x0: w.x0, x1: w.x1 });
+      });
+      textCols.forEach(function (t) {
+        t.role = /^(data|dt)\b/i.test(t.label) ? 'date'
+          : /raz[aã]o|favorecido|benefici|nome|pagador/i.test(t.label) ? 'party'
+          : /cpf|cnpj/i.test(t.label) ? 'taxId'
+          : /origem|ag[eê]ncia|^ag\b/i.test(t.label) ? 'origin'
+          : 'hist';
+      });
+    }
+    var useCols = textCols.filter(function (t) { return t.role !== 'date'; }).length >= 2;
+    function roleOf(c) {
+      var r = null;
+      textCols.forEach(function (t) { if (c.x0 >= t.x0 - 4) r = t; });
+      return r ? r.role : 'hist';
+    }
+
+    // 5) Lançamentos (linha com data/valor) e linhas de texto que pertencem a eles.
+    var rows = [], lastDate = null, occ = {}, rowLines = [];
+    lines.forEach(function (l, li) {
       var dateCell = l.cells.slice(0, 3).filter(function (c) { return c.kind === 'date'; })[0];
-      if (dateCell) {
+      var hasMoney = l.cells.some(function (c) { return c.kind === 'money'; });
+      if (dateCell && hasMoney) {
         var dm = DATE.exec(dateCell.t);
         var yy = dm[3] ? (dm[3].length === 2 ? '20' + dm[3] : dm[3]) : null;
         lastDate = { dd: dm[1], mm: dm[2], yyyy: yy };
-      }
-      var values = {}, nValues = 0, desc = [];
+      } else dateCell = null;   // "28/10" sozinho numa linha é parte da descrição
+      var values = {}, nValues = 0, texts = [];
       l.cells.forEach(function (c) {
         if (c === dateCell) return;
         if (c.kind === 'money') {
           var ci = colOf(c);
           if (ci >= 0 && values['c' + ci] === undefined) { values['c' + ci] = c.v; nValues++; return; }
         }
-        desc.push(c.t);
+        texts.push({ c: c, y: l.y });
       });
       if (l.candidate && nValues && lastDate) {
-        var d = desc.join(' ').replace(/\s+/g, ' ').trim();
-        var sig = lastDate.dd + '/' + lastDate.mm + '|' + d + '|' + JSON.stringify(values);
-        occ[sig] = (occ[sig] || 0) + 1;
-        lastRow = {
-          id: hash(sig + '#' + occ[sig]),
-          dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy,
-          desc: d, values: values, saldo: /\bsaldo\b/i.test(d), page: l.page, y: l.y
-        };
-        rows.push(lastRow);
-      } else if (lastRow && !nValues && !dateCell && l.page === lastRow.page && lastRow.y - l.y > 0 && lastRow.y - l.y < 16) {
-        // Continuação da descrição na linha de baixo.
-        var extra = desc.join(' ').trim();
-        if (extra && extra.length < 120) { lastRow.desc = (lastRow.desc + ' ' + extra).trim(); lastRow.y = l.y; }
+        var row = { dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy, values: values, page: l.page, y: l.y, parts: texts };
+        rows.push(row); rowLines.push(li);
+      } else {
+        l.loose = texts;
       }
+    });
+    // Texto de células com mais de uma linha (acima ou abaixo da linha da data): vai para o lançamento mais próximo.
+    var headerY = headerLine ? headerLine.y : Infinity;
+    lines.forEach(function (l) {
+      if (!l.loose || !l.loose.length || l === headerLine) return;
+      if (headerLine && l.page === headerLine.page && l.y >= headerY) return;
+      var best = null, dist = 1e9;
+      rows.forEach(function (r) { if (r.page !== l.page) return; var d = Math.abs(r.y - l.y); if (d < dist) { dist = d; best = r; } });
+      if (!best || dist > 12) return;
+      var txt = l.loose.map(function (x) { return x.c.t; }).join(' ');
+      if (txt.length > 140) return;
+      best.parts = best.parts.concat(l.loose);
+    });
+    rows.forEach(function (r) {
+      // Ordem de leitura: de cima para baixo, da esquerda para a direita.
+      r.parts.sort(function (a, b) { return (b.y - a.y) || (a.c.x0 - b.c.x0); });
+      var f = { hist: [], party: [], taxId: [], origin: [] };
+      r.parts.forEach(function (x) { var role = useCols ? roleOf(x.c) : 'hist'; if (role === 'date') role = 'hist'; f[role].push(x.c.t); });
+      var j = function (a) { return a.join(' ').replace(/\s+/g, ' ').trim(); };
+      r.hist = j(f.hist); r.party = j(f.party); r.taxId = j(f.taxId); r.origin = j(f.origin);
+      r.desc = [r.hist, r.party].filter(Boolean).join(' · ');
+      r.extra = [r.origin ? 'Ag/origem ' + r.origin : '', r.taxId ? 'CPF/CNPJ ' + r.taxId : ''].filter(Boolean).join(' · ');
+      r.saldo = /\bsaldo\b/i.test(r.desc);
+      var sig = r.dd + '/' + r.mm + '|' + r.desc + '|' + JSON.stringify(r.values);
+      occ[sig] = (occ[sig] || 0) + 1;
+      r.id = hash(sig + '#' + occ[sig]);
+      delete r.parts;
     });
 
     var period = guessPeriod(lines, rows);
