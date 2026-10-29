@@ -218,7 +218,7 @@
       r.date = r.dd + '/' + r.mm + (y ? '/' + y : '');
       delete r.y; delete r.page;
     });
-    return normalizeSigns({ columns: columns, rows: rows, period: period, lineCount: lines.length });
+    return markSaldoAt(normalizeSigns({ columns: columns, rows: rows, period: period, lineCount: lines.length }));
   }
 
   // Opções de soma: a coluna inteira e, quando tem valores positivos e negativos, só entradas / só saídas.
@@ -381,7 +381,7 @@
     rows.forEach(function (r) { if (r.yyyy) { var key = r.yyyy + '-' + r.mm; cnt[key] = (cnt[key] || 0) + 1; } });
     var period = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; })[0] || '';
     rows.forEach(function (r) { r.date = r.dd + '/' + r.mm + (r.yyyy ? '/' + r.yyyy : ''); });
-    return normalizeSigns({ columns: columns, rows: rows, period: period });
+    return markSaldoAt(normalizeSigns({ columns: columns, rows: rows, period: period }));
   }
 
   // Agência e conta no cabeçalho do PDF (para identificar a empresa).
@@ -403,6 +403,17 @@
         var v = r.values[c.id];
         if (typeof v === 'number') r.values[c.id] = out ? -Math.abs(v) : Math.abs(v);
       });
+    });
+    return result;
+  }
+
+  // "SALDO ANTERIOR" com lançamentos no mesmo dia (no próprio arquivo) é o saldo do início do dia;
+  // nos demais casos, a linha de saldo é o saldo do fim do dia.
+  function markSaldoAt(result) {
+    var movDays = {};
+    result.rows.forEach(function (r) { if (!r.saldo) movDays[r.dd + '/' + r.mm] = 1; });
+    result.rows.forEach(function (r) {
+      if (r.saldo) r.saldoAt = /anterior/i.test(r.desc) && movDays[r.dd + '/' + r.mm] ? 'start' : 'end';
     });
     return result;
   }

@@ -261,3 +261,16 @@ V48.17 - EXTRATO DO MÊS · SEM LINHAS DE SALDO NA TABELA
 - Removida a opção "Mostrar linhas de saldo na tabela": as linhas de saldo do banco
   nunca aparecem na tabela. Saldo inicial/final continuam nos cards e no rodapé.
 - Contagens (lançamentos e dias) sem as linhas de saldo.
+
+V48.18 - EXTRATO DO MÊS · SALDO CORRETO COM VÁRIOS ARQUIVOS
+- Causa: o EXTRATO VEICULOS novo veio sem o cabeçalho do banco (Agência/Conta) e ordenado
+  por valor; a Central não reconheceu a mesma conta e somou os dias 26 e 27 duas vezes.
+- Arquivo sem agência/conta: a Central reconhece a mesma conta pelos lançamentos em comum
+  (dias iguais com os mesmos lançamentos) e não duplica.
+- Saldo calculado a partir do saldo do banco mais próximo do dia (SALDO ANTERIOR / saldo do
+  dia de cada arquivo) + lançamentos entre eles. Cada saldo do banco é ligado ao seguinte:
+  se não fecha, o card mostra "Não fecha de DD/MM a DD/MM (valor): falta lançamento ou arquivo".
+- Conferido com os 4 extratos novos sobre os anteriores: saldo de todos os dias confere com
+  o banco (Veículos 28/10 432.099,15; France 116.874,52; Motors 202.610,11; Suzuki 27/10
+  85.349,68) e Veículos com 228 lançamentos, entradas 1.757.521,86, saídas 1.997.987,72.
+- Na primeira abertura, a pasta é lida de novo para corrigir os dados já importados.

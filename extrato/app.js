@@ -157,6 +157,35 @@
         });
       }
       src = acct;
+    } else if (old && old.rows.length) {
+      // Arquivo sem agência/conta (ex.: cabeçalho do banco apagado): se os lançamentos dos dias em comum
+      // são os mesmos de uma conta já importada, é a mesma conta.
+      // Assinatura independente da ordem das colunas: dia | descrição | valores.
+      var loose = function (day, desc, values) { return day + '|' + desc + '|' + Object.keys(values).map(function (k) { return values[k]; }).sort(function (x, y) { return x - y; }).join(';'); };
+      var inSig = {}, inDays = {};
+      parsed.rows.forEach(function (r) {
+        if (r.saldo) return;
+        var day = r.dd + '/' + r.mm, g = loose(day, r.desc, r.values);
+        inSig[g] = (inSig[g] || 0) + 1; inDays[day] = 1;
+      });
+      var best = null, bestScore = 0;
+      Object.keys(old.sources || { '': 1 }).forEach(function (k) {
+        if (k === src) return;
+        var theirs = old.rows.filter(function (r) { return (r.src || '') === k && !r.saldo && inDays[r.day]; });
+        if (theirs.length < 3) return;
+        var left = Object.assign({}, inSig), same = 0;
+        theirs.forEach(function (r) { var g = loose(r.day, r.desc, r.values); if (left[g]) { left[g]--; same++; } });
+        var score = same / theirs.length;
+        if (score >= 0.8 && score > bestScore) { best = k; bestScore = score; }
+      });
+      if (best !== null) {
+        if (old.sources && old.sources[src] && src !== best) {
+          old.rows.forEach(function (r) { if ((r.src || '') === src) r.src = best; });
+          delete old.sources[src];
+        }
+        parsed = Object.assign({}, parsed, { account: (old.sources && old.sources[best] && old.sources[best].account) || '' });
+        src = best;
+      }
     }
     var yyyy = m.slice(0, 4);
     var columns = old ? old.columns.slice() : [];
@@ -178,7 +207,7 @@
       var values = {};
       Object.keys(r.values).forEach(function (k) { values[remap[k]] = r.values[k]; });
       return { id: r.id + tag, date: r.dd + '/' + r.mm + '/' + (r.yyyy || yyyy), day: r.dd + '/' + r.mm, desc: r.desc, extra: r.extra || '', values: values, saldo: r.saldo, src: src,
-        hist: r.hist || '', party: r.party || '', taxId: r.taxId || '', origin: r.origin || '' };
+        hist: r.hist || '', party: r.party || '', taxId: r.taxId || '', origin: r.origin || '', saldoAt: r.saldoAt || '' };
     });
 
     // Mesmo extrato em outro arquivo (ex.: .xls e .xlsx, ou versão mais completa): não soma duas vezes.
@@ -374,52 +403,60 @@
 
   // Saldo de cada conta no fim de um dia = saldo de referência do banco + movimentos entre os dias.
   // dia vazio = período inteiro. Devolve { start, end, bank, diff, accounts }.
+  // Saldo de cada conta = saldo do banco mais próximo do dia + lançamentos entre eles.
+  // Cada saldo informado pelo banco é ligado ao seguinte; se não fecha, falta lançamento ou arquivo.
+  // dia vazio = período inteiro. Devolve { start, end, ok, gaps: [{from,to,diff}], accounts }.
   function balances(mo, day) {
     var saldoCols = mo.columns.filter(function (c) { return c.saldo; }).map(function (c) { return c.id; });
     var moveCols = mo.columns.filter(function (c) { return !c.saldo; }).map(function (c) { return c.id; });
     if (!saldoCols.length) return null;
     var bySrc = {};
     mo.rows.forEach(function (r) { (bySrc[r.src || ''] = bySrc[r.src || ''] || []).push(r); });
-    var out = { start: 0, end: 0, bank: 0, bankKnown: true, diff: 0, accounts: 0 };
+    var out = { start: 0, end: 0, ok: true, gaps: [], accounts: 0 };
+    var r2 = function (v) { return Math.round(v * 100) / 100; };
     Object.keys(bySrc).forEach(function (k) {
       var rows = bySrc[k];
       var sval = function (r) { for (var i = 0; i < saldoCols.length; i++) { var v = r.values[saldoCols[i]]; if (typeof v === 'number') return v; } return null; };
-      var movByDay = {};
+      var mov = {};
       rows.forEach(function (r) {
         if (r.saldo) return;
         var v = moveCols.reduce(function (s, c) { return s + (typeof r.values[c] === 'number' ? r.values[c] : 0); }, 0);
-        movByDay[dayNum(r.day)] = (movByDay[dayNum(r.day)] || 0) + v;
+        mov[dayNum(r.day)] = (mov[dayNum(r.day)] || 0) + v;
       });
-      // Referência: o saldo mais antigo informado pelo banco (de preferência "SALDO ANTERIOR").
-      var saldoRows = rows.filter(function (r) { return r.saldo && sval(r) !== null; });
-      if (!saldoRows.length) return;
-      var firstDay = Math.min.apply(null, saldoRows.map(function (r) { return dayNum(r.day); }));
-      var onFirst = saldoRows.filter(function (r) { return dayNum(r.day) === firstDay; });
-      var anchor = onFirst.filter(function (r) { return /anterior/i.test(r.desc); })[0] || onFirst[onFirst.length - 1];
-      var aDay = firstDay, aVal = sval(anchor);
-      // "SALDO ANTERIOR" com a mesma data dos primeiros lançamentos vale para o início do dia.
-      if (/anterior/i.test(anchor.desc) && movByDay[firstDay]) aDay = firstDay - 1;
+      // Saldo no fim de cada dia, segundo o banco.
+      var ref = {};
+      rows.forEach(function (r) {
+        if (!r.saldo || sval(r) === null) return;
+        var d = dayNum(r.day);
+        var at = r.saldoAt || (/anterior/i.test(r.desc) && mov[d] ? 'start' : 'end');
+        if (at === 'start') { if (ref[d - 1] === undefined) ref[d - 1] = sval(r); }
+        else if (/anterior/i.test(r.desc)) { if (ref[d] === undefined) ref[d] = sval(r); }
+        else ref[d] = sval(r);   // linha do saldo do dia: vale a última do dia
+      });
+      var refDays = Object.keys(ref).map(Number).sort(function (a, b) { return a - b; });
+      if (!refDays.length) return;
+      var sumMov = function (from, to) { var t = 0; Object.keys(mov).forEach(function (x) { x = Number(x); if (x > from && x <= to) t += mov[x]; }); return t; };
       var endOf = function (d) {
-        var v = aVal;
-        Object.keys(movByDay).forEach(function (x) { x = Number(x); if (x > aDay && x <= d) v += movByDay[x]; if (x <= aDay && x > d) v -= movByDay[x]; });
-        return Math.round(v * 100) / 100;
+        var before = refDays.filter(function (x) { return x <= d; });
+        if (before.length) { var R = before[before.length - 1]; return r2(ref[R] + sumMov(R, d)); }
+        var R2 = refDays[0]; return r2(ref[R2] - sumMov(d, R2));
       };
-      var movDays = Object.keys(movByDay).map(Number);
-      var lastDay = Math.max.apply(null, movDays.concat(saldoRows.map(function (r) { return dayNum(r.day); })));
-      var firstMov = movDays.length ? Math.min.apply(null, movDays) : aDay + 1;
+      // Conferência: cada saldo do banco + lançamentos até o próximo saldo do banco.
+      for (var i = 1; i < refDays.length; i++) {
+        var a = refDays[i - 1], b = refDays[i];
+        var diff = r2(ref[a] + sumMov(a, b) - ref[b]);
+        if (Math.abs(diff) >= 0.01) { out.ok = false; out.gaps.push({ from: a, to: b, diff: diff }); }
+      }
+      var movDays = Object.keys(mov).map(Number);
+      var allDays = movDays.concat(refDays);
+      var lastDay = Math.max.apply(null, allDays);
+      var firstMov = movDays.length ? Math.min.apply(null, movDays) : refDays[0] + 1;
       var d = day ? dayNum(day) : lastDay;
-      var start = day ? endOf(d) - (movByDay[d] || 0) : endOf(firstMov) - (movByDay[firstMov] || 0);
-      var end = endOf(d);
-      // Saldo que o banco informou no fim do dia: última linha do dia com saldo
-      // (linha "SALDO DO DIA" ou saldo ao lado do último lançamento).
-      var bankRows = rows.filter(function (r) { return dayNum(r.day) === d && sval(r) !== null && !/anterior/i.test(r.desc); });
-      if (bankRows.length) out.bank += sval(bankRows[bankRows.length - 1]); else out.bankKnown = false;
-      out.start += Math.round(start * 100) / 100; out.end += end; out.accounts++;
+      var start = day ? endOf(d - 1) : endOf(firstMov - 1);
+      out.start += start; out.end += endOf(d); out.accounts++;
     });
     if (!out.accounts) return null;
-    out.start = Math.round(out.start * 100) / 100; out.end = Math.round(out.end * 100) / 100;
-    out.bank = Math.round(out.bank * 100) / 100;
-    out.diff = out.bankKnown ? Math.round((out.end - out.bank) * 100) / 100 : 0;
+    out.start = r2(out.start); out.end = r2(out.end);
     return out;
   }
 
@@ -465,9 +502,11 @@
     var cards = '';
     var bal = balances(mo, state.ui.day || '');
     if (bal) {
-      var check = !bal.bankKnown ? '' : (Math.abs(bal.diff) < 0.01
+      var mmTxt = state.lastMonth ? '/' + state.lastMonth.slice(5) : '';
+      var dd = function (n) { return String(n).padStart(2, '0') + mmTxt; };
+      var check = bal.ok
         ? '<small class="is-ok">Confere com o saldo do banco</small>'
-        : '<small class="is-warn">Banco: ' + brl.format(bal.bank) + ' · diferença ' + brl.format(bal.diff) + '</small>');
+        : '<small class="is-warn">Não fecha ' + bal.gaps.map(function (g) { return 'de ' + dd(g.from) + ' a ' + dd(g.to) + ' (' + brl.format(g.diff) + ')'; }).join('; ') + ': falta lançamento ou arquivo</small>';
       cards += '<div class="ex-total ex-balance"><span>Saldo inicial</span><strong>' + brl.format(bal.start) + '</strong><small>Início ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + (bal.accounts > 1 ? ' · ' + bal.accounts + ' contas' : '') + '</small></div>';
       cards += '<div class="ex-total ex-balance"><span>Saldo final</span><strong class="' + (bal.end < 0 ? 'is-neg' : '') + '">' + brl.format(bal.end) + '</strong><small>Fim ' + (state.ui.day ? 'do dia ' + state.ui.day : 'do período') + '</small>' + check + '</div>';
     }
