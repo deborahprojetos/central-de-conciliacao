@@ -249,3 +249,15 @@ V48.15 - EXTRATO DO MÊS · FILTROS DE PLANILHA NA TABELA
   e "Limpar filtros da tabela". Filtros e ordenação ficam salvos por empresa.
 - Cards de soma seguem os filtros da tabela.
 - A janela do filtro abre para cima quando não cabe embaixo.
+
+V48.16 - EXTRATO DO MÊS · SÓ ARQUIVOS COM "EXTRATO" NO NOME
+- A pasta conectada considera apenas arquivos com "EXTRATO" no nome (ex.: EXTRATO FRANCE,
+  EXTRATO VEICULOS). Os demais arquivos e pastas (VEICULOS, AGM AGRO, VEICULOS_arquivos)
+  são ignorados.
+- A empresa é lida do que vem depois de "EXTRATO" (EXTRATO MOTORS. → Motors).
+- Análise de pagamentos usa a mesma regra para achar o extrato da empresa.
+
+V48.17 - EXTRATO DO MÊS · SEM LINHAS DE SALDO NA TABELA
+- Removida a opção "Mostrar linhas de saldo na tabela": as linhas de saldo do banco
+  nunca aparecem na tabela. Saldo inicial/final continuam nos cards e no rodapé.
+- Contagens (lançamentos e dias) sem as linhas de saldo.

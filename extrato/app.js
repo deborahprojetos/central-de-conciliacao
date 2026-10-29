@@ -1,7 +1,7 @@
 /* Extrato do mês · tela (v1.0)
    Dados salvos por empresa em localStorage: cf:extrato:<empresa>
    { months: { 'AAAA-MM': { fileName, importedAt, columns, rows, marks: { idLançamento: { status, resp, at } } } },
-     lastMonth, prefs: { sum: [chaves], ignoreSaldo }, ui: { day } } */
+     lastMonth, prefs: {}, ui: { day, type, cf, sort } } */
 (function () {
   'use strict';
 
@@ -356,12 +356,10 @@
   function visibleRows(mo, exceptKey) {
     var ui = state.ui, day = ui.day || '', tp = ui.type || '';
     var q = $('search').value.trim().toLowerCase();
-    var showSaldo = state.prefs.showSaldo !== false;
     var defs = tableCols(mo), cf = colFilters();
     var act = activeCf(exceptKey).map(function (k) { return { d: defs.filter(function (x) { return x.key === k; })[0], set: cf[k] }; }).filter(function (x) { return x.d; });
-    var sortedOther = state.ui.sort && state.ui.sort.key && state.ui.sort.key !== 'date';
     return mo.rows.filter(function (r) {
-      if (r.saldo && (!showSaldo || tp || act.length || sortedOther || exceptKey)) return false;
+      if (r.saldo) return false; // linhas de saldo nunca aparecem na tabela (o saldo fica nos cards e no rodapé)
       if (day && r.day !== day) return false;
       var mk = mo.marks[r.id] || {};
       if (tp && rowType(r, mo.columns) !== tp) return false;
@@ -443,11 +441,10 @@
     $('workArea').hidden = !mo;
     if (!mo) return;
 
-    $('ignoreSaldo').checked = state.prefs.showSaldo !== false;
 
     // Dias
     var days = [], count = {};
-    mo.rows.forEach(function (r) { if (!count[r.day]) { days.push(r.day); count[r.day] = 0; } count[r.day]++; });
+    mo.rows.forEach(function (r) { if (r.saldo) return; if (!count[r.day]) { days.push(r.day); count[r.day] = 0; } count[r.day]++; });
     if (state.ui.day && !count[state.ui.day]) state.ui.day = '';
     $('daySelect').innerHTML = '<option value="">Todos os dias</option>' + days.map(function (d) {
       return '<option value="' + d + '"' + (d === state.ui.day ? ' selected' : '') + '>' + d + ' · ' + count[d] + '</option>';
@@ -531,7 +528,7 @@
       else t = Core.applySum({ col: c.id, mode: 'all' }, footBase);
       return '<td class="num' + (t < 0 ? ' is-neg' : '') + '">' + (t === null ? '' : brl.format(t)) + '</td>';
     }).join('') + '<td colspan="2"></td></tr>' : '';
-    $('rowCount').textContent = rows.length + ' de ' + mo.rows.length + ' lançamentos · ' + (multi ? srcKeys.length + ' arquivos' : mo.fileName);
+    $('rowCount').textContent = rows.length + ' de ' + mo.rows.filter(function (r) { return !r.saldo; }).length + ' lançamentos · ' + (multi ? srcKeys.length + ' arquivos' : mo.fileName);
   }
 
   /* ---- Janela do filtro de coluna ---- */
@@ -642,7 +639,6 @@
   $('thead').addEventListener('click', function (e) { var b = e.target.closest('.ex-fbtn'); if (b) openPop(b.getAttribute('data-key'), b); });
   var searchTimer = null;
   $('search').addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(render, 200); });
-  $('ignoreSaldo').addEventListener('change', function (e) { state.prefs.showSaldo = e.target.checked; save(); render(); });
   $('sumOptions').addEventListener('click', function (e) {
     var b = e.target.closest('.ex-chip'); if (!b) return;
     var mo = current(); if (!mo) return;

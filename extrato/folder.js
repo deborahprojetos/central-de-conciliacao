@@ -43,6 +43,12 @@
     return new Date(iso).toLocaleDateString('pt-BR');
   }
   function baseName(name) { return String(name).replace(/\.[^.]+$/, '').replace(/[.\s_-]+$/, '').trim(); }
+  // Só entram arquivos com "EXTRATO" no nome; a empresa é o que vem depois da palavra
+  // (ex.: "EXTRATO FRANCE.xlsx" → France).
+  function isExtrato(name) { return Shell.slug(baseName(name)).indexOf('extrato') !== -1; }
+  function companyPart(name) {
+    return baseName(name).replace(/\bextratos?\b/ig, ' ').replace(/^[\s._-]+|[\s._-]+$/g, '').replace(/\s+/g, ' ').trim();
+  }
 
   /* ---------------- IndexedDB (guarda o acesso à pasta) ---------------- */
   function idb() {
@@ -74,7 +80,7 @@
       var name = entry.name;
       if (name.charAt(0) === '.' || name.indexOf('~$') === 0) continue;
       if (entry.kind === 'directory') { if (depth < 5) await walk(entry, path.concat([name]), depth + 1, out); continue; }
-      if (!App.fileKind(name)) continue;
+      if (!App.fileKind(name) || !isExtrato(name)) continue;
       out.push({ path: path.concat([name]).join('/'), name: name, folders: path, handle: entry });
       if (out.length > 3000) break;
     }
@@ -84,7 +90,7 @@
   function identify(entry, parsed) {
     var mp = mapa();
     if (parsed && parsed.account && mp.contas[parsed.account] && Shell.companyById(mp.contas[parsed.account])) return { company: mp.contas[parsed.account], by: 'conta' };
-    var base = baseName(entry.name), key = Shell.slug(base);
+    var base = companyPart(entry.name), key = Shell.slug(base);
     if (mp.arquivos[key] && Shell.companyById(mp.arquivos[key])) return { company: mp.arquivos[key], by: 'arquivo' };
     var c = Shell.companyByName(base);
     if (c) return { company: c.id, by: 'arquivo' };
@@ -335,7 +341,7 @@
     var idx = index(), rec = idx.files[path] || {};
     if (li.querySelector('.fd-remember input').checked) {
       var mp = mapa();
-      mp.arquivos[Shell.slug(baseName(handles[path] ? handles[path].name : path.split('/').pop()))] = c.id;
+      mp.arquivos[Shell.slug(companyPart(handles[path] ? handles[path].name : path.split('/').pop()))] = c.id;
       if (parsed.account) mp.contas[parsed.account] = c.id;
       setJSON(MAP_KEY, mp);
     }

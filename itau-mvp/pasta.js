@@ -69,10 +69,15 @@
 
   /* ---------------- Quais arquivos são desta empresa ---------------- */
   function isTotais(name) { return /totais?pagos?|totalpago/.test(Shell.slug(baseName(name))); }
+  // Extrato: só arquivos com "EXTRATO" no nome; a empresa vem depois da palavra.
+  function isExtrato(name) { return Shell.slug(baseName(name)).indexOf('extrato') !== -1; }
+  function companyPart(name) {
+    return baseName(name).replace(/\bextratos?\b/ig, ' ').replace(/^[\s._-]+|[\s._-]+$/g, '').replace(/\s+/g, ' ').trim();
+  }
   function belongsTo(name, co) {
-    var key = Shell.slug(baseName(name)), mp = mapa();
+    var part = companyPart(name), key = Shell.slug(part), mp = mapa();
     if (mp.arquivos[key]) return mp.arquivos[key] === co;
-    var c = Shell.companyByName(baseName(name));
+    var c = Shell.companyByName(part);
     if (c) return c.id === co;
     var starts = Shell.COMPANIES.filter(function (x) { var k = Shell.slug(x.name); return k.length >= 3 && key.indexOf(k) === 0; })
       .sort(function (a, b) { return Shell.slug(b.name).length - Shell.slug(a.name).length; });
@@ -85,7 +90,7 @@
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       if (isTotais(e.name)) { totais.push(e); continue; }
-      if (belongsTo(e.name, company)) stmts.push(e);
+      if (isExtrato(e.name) && belongsTo(e.name, company)) stmts.push(e);
     }
     // Extratos: lançamentos por conta; cada dia vem do arquivo mais novo daquela conta.
     var parsed = [];
