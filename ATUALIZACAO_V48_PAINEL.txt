@@ -287,3 +287,11 @@ V48.19 - EXTRATO DO MÊS · ARQUIVO NA EMPRESA ERRADA E PDF DO ITAÚ BBA
   células em 2 ou 3 linhas montadas corretamente (ex.: "IFOOD PAGO INSTITUICAO DE PAGAMENTO
   S.A."). Conferido: 62 lançamentos de 28/10, saldo 661.533,63 → 432.099,15.
 - A pasta é lida de novo na primeira abertura.
+
+V48.20 - EXTRATO DO MÊS · CONFERIR COM UM CLIQUE
+- Clique em qualquer parte da linha (data, descrição, fornecedor, valor) pinta de verde
+  como conferido (✓); outro clique desmarca. Shift + clique marca/desmarca o intervalo.
+- Clicar no Status ou no Responsável não pinta a linha.
+- Contador "N de M conferidos"; coluna ✓ com filtro de planilha (Conferido / Não conferido)
+  e ordenação. Cards somam o que está filtrado (ex.: quanto falta conferir).
+- Marcação salva por empresa e mês; mantida ao reimportar o mesmo lançamento.

@@ -348,7 +348,8 @@
   function tableCols(mo) {
     var multi = Object.keys(mo.sources || {}).length > 1;
     var hasParty = mo.rows.some(function (r) { return r.party; });
-    var list = [{ key: 'date', label: 'Data', kind: 'date', text: function (r) { return r.day; }, sortVal: function (r) { return dayNum(r.day); } }];
+    var list = [{ key: 'chk', label: '✓', kind: 'text', text: function (r) { return (mo.marks[r.id] || {}).ok ? 'Conferido' : 'Não conferido'; } },
+      { key: 'date', label: 'Data', kind: 'date', text: function (r) { return r.day; }, sortVal: function (r) { return dayNum(r.day); } }];
     if (multi) list.push({ key: 'src', label: 'Arquivo', kind: 'text', text: function (r) { return srcLabelOf(mo, r) || EMPTY; } });
     if (hasParty) {
       list.push({ key: 'hist', label: 'Lançamento', kind: 'text', text: function (r) { return r.hist || r.desc || EMPTY; } });
@@ -520,10 +521,8 @@
     }).join('');
     $('sumTotals').innerHTML = cards || '<div class="ex-total ex-total-empty"><span>Nenhum campo selecionado</span></div>';
 
-    // Contagem de status
-    var nP = 0, nA = 0;
-    mo.rows.forEach(function (r) { var s = (mo.marks[r.id] || {}).status; if (s === 'Pendente') nP++; else if (s === 'Em análise') nA++; });
-    $('statusCounts').innerHTML = '<span class="ex-badge is-pend">' + nP + ' pendente' + (nP === 1 ? '' : 's') + '</span><span class="ex-badge is-ana">' + nA + ' em análise</span>';
+    // Contagem: conferidos, pendentes, em análise
+    renderCounts(mo);
 
     updateRespOptions(mo);
     $('typeFilter').value = state.ui.type || '';
@@ -546,7 +545,8 @@
     $('tbody').innerHTML = rows.map(function (r) {
       var mk = mo.marks[r.id] || {};
       var cls = mk.status === 'Pendente' ? 'st-pend' : mk.status === 'Em análise' ? 'st-ana' : '';
-      return '<tr data-id="' + r.id + '" class="' + cls + (r.saldo ? ' is-saldo' : '') + '">' + defs.map(function (d) {
+      return '<tr data-id="' + r.id + '" class="' + cls + (mk.ok ? ' is-ok' : '') + (r.saldo ? ' is-saldo' : '') + '">' + defs.map(function (d) {
+        if (d.key === 'chk') return '<td class="chk"><button type="button" class="ex-chk" aria-pressed="' + (!!mk.ok) + '" aria-label="Conferido" title="Clique para marcar como conferido (Shift + clique marca várias linhas)">✓</button></td>';
         if (d.key === 'date') return '<td class="date">' + esc(r.day) + '</td>';
         if (d.key === 'src') return '<td class="src">' + esc(srcLabelOf(mo, r)) + '</td>';
         if (d.key === 'hist') return '<td class="desc">' + esc(r.hist || r.desc) + (r.party ? '' : (r.extra ? '<small>' + esc(r.extra) + '</small>' : '')) + '</td>';
@@ -660,12 +660,25 @@
   window.addEventListener('resize', closePop);
   document.addEventListener('scroll', function (e) { if (pop && !pop.hidden && !pop.contains(e.target)) closePop(); }, true);
 
+  function renderCounts(mo) {
+    var nP = 0, nA = 0, nOk = 0, nAll = 0;
+    mo.rows.forEach(function (r) {
+      if (r.saldo) return;
+      nAll++;
+      var m = mo.marks[r.id] || {};
+      if (m.status === 'Pendente') nP++; else if (m.status === 'Em análise') nA++;
+      if (m.ok) nOk++;
+    });
+    $('statusCounts').innerHTML = '<span class="ex-badge is-ok">' + nOk + ' de ' + nAll + ' conferidos</span>' +
+      '<span class="ex-badge is-pend">' + nP + ' pendente' + (nP === 1 ? '' : 's') + '</span><span class="ex-badge is-ana">' + nA + ' em análise</span>';
+  }
+
   function setMark(id, patch) {
     var mo = current(); if (!mo) return;
     var mk = mo.marks[id] || {};
     Object.keys(patch).forEach(function (k) { mk[k] = patch[k]; });
     mk.at = new Date().toISOString();
-    if (!mk.status && !mk.resp) delete mo.marks[id]; else mo.marks[id] = mk;
+    if (!mk.status && !mk.resp && !mk.ok) delete mo.marks[id]; else mo.marks[id] = mk;
     save();
   }
 
@@ -688,14 +701,43 @@
     mo.sum = sel.indexOf(k) === -1 ? sel.concat([k]) : sel.filter(function (x) { return x !== k; });
     save(); render();
   });
+  var lastClick = null;
+  function paint(tr, on) {
+    tr.classList.toggle('is-ok', on);
+    var b = tr.querySelector('.ex-chk'); if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  $('tbody').addEventListener('click', function (e) {
+    if (e.target.closest('select, input, a')) return;
+    var tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    var mo = current(); if (!mo) return;
+    var id = tr.getAttribute('data-id');
+    var on = !(mo.marks[id] || {}).ok;
+    var trs = Array.prototype.slice.call($('tbody').querySelectorAll('tr[data-id]'));
+    var targets = [tr];
+    if (e.shiftKey && lastClick) {
+      var a = trs.indexOf(lastClick.tr), b = trs.indexOf(tr);
+      if (a !== -1) { targets = trs.slice(Math.min(a, b), Math.max(a, b) + 1); on = lastClick.on; }
+      window.getSelection && window.getSelection().removeAllRanges();
+    }
+    var stamp = new Date().toISOString();
+    targets.forEach(function (t) {
+      var tid = t.getAttribute('data-id'), mk = mo.marks[tid] || {};
+      mk.ok = on; mk.at = stamp;
+      if (!mk.status && !mk.resp && !mk.ok) delete mo.marks[tid]; else mo.marks[tid] = mk;
+      paint(t, on);
+    });
+    save();
+    lastClick = { tr: tr, on: on };
+    if (Array.isArray(colFilters().chk) || (state.ui.sort && state.ui.sort.key === 'chk')) render(); else renderCounts(mo);
+  });
   $('tbody').addEventListener('change', function (e) {
     var tr = e.target.closest('tr[data-id]'); if (!tr) return;
     if (e.target.classList.contains('ex-status')) {
       setMark(tr.getAttribute('data-id'), { status: e.target.value });
       tr.className = (e.target.value === 'Pendente' ? 'st-pend' : e.target.value === 'Em análise' ? 'st-ana' : '') + (tr.classList.contains('is-saldo') ? ' is-saldo' : '');
-      var mo = current(), nP = 0, nA = 0;
-      mo.rows.forEach(function (r) { var s = (mo.marks[r.id] || {}).status; if (s === 'Pendente') nP++; else if (s === 'Em análise') nA++; });
-      $('statusCounts').innerHTML = '<span class="ex-badge is-pend">' + nP + ' pendente' + (nP === 1 ? '' : 's') + '</span><span class="ex-badge is-ana">' + nA + ' em análise</span>';
+      var mo = current();
+      if ((mo.marks[tr.getAttribute('data-id')] || {}).ok) tr.classList.add('is-ok');
+      renderCounts(mo);
       if (Array.isArray(colFilters().status) || (state.ui.sort && state.ui.sort.key === 'status')) render();
     } else if (e.target.classList.contains('ex-resp')) {
       setMark(tr.getAttribute('data-id'), { resp: e.target.value.trim() });

@@ -153,3 +153,17 @@ body { margin: 0; color: var(--ex-ink); background: #f3f6fb; font-family: Inter,
 .ex-pop { max-height: calc(100vh - 16px); overflow-y: auto; }
 .ex-total small.ex-acct { color: #46546d; font-weight: 600; }
 .fd-move { min-height: 30px; padding: 3px 8px; border: 1px solid #d6deec; border-radius: 7px; font: inherit; font-size: 12.5px; background: #fff; }
+
+/* Conferido: clique pinta a linha (v1.12) */
+.ex-table tbody tr { cursor: pointer; }
+.ex-table tbody tr:hover td { background-image: linear-gradient(rgba(49, 87, 200, .04), rgba(49, 87, 200, .04)); }
+.ex-table td.chk { width: 34px; padding-right: 0; }
+.ex-chk { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1.5px solid #c9d2e3; border-radius: 6px; color: transparent; background: #fff; font-size: 13px; font-weight: 900; line-height: 1; cursor: pointer; }
+.ex-chk:hover { border-color: #2f8f68; color: #b6dcc8; }
+.ex-chk:focus-visible { outline: 2px solid var(--ex-blue); outline-offset: 1px; }
+.ex-table tr.is-ok td { background-color: #e3f4ea !important; }
+.ex-table tr.is-ok td:first-child { box-shadow: inset 3px 0 0 #2f8f68; }
+.ex-table tr.is-ok .ex-chk { border-color: #2f8f68; color: #fff; background: #2f8f68; }
+.ex-badge.is-ok { color: #1f6b49; background: #e6f4ed; }
+.ex-table tbody tr { user-select: none; }
+.ex-table tbody tr input, .ex-table tbody tr select { user-select: text; }
