@@ -1,0 +1,13 @@
+V48.4 - CIELO: VENDAS JA CEDIDAS NAO ENTRAM MAIS NA NOTA DE DEBITO
+
+Problema: a lista de titulos da Nota de Debito mostrava vendas que ja tinham sido cedidas ao banco
+(linha "Valor cedido em negociacao"). A regra antiga so removia a propria linha negativa, nao a venda.
+
+Correcao: para cada data de pagamento + estabelecimento + bandeira, as cessoes sao conciliadas por valor
+com as vendas do grupo; as vendas cedidas saem da lista. Grupos que nao fecham (16/11/2026 Visa e
+Mastercard no arquivo de teste) ficam ocultos por seguranca e aparecem no aviso.
+
+Arquivo de teste Recebiveis_cielo_detalhe-20261105-20281104:
+- Candidatos antes: 1.042 (R$ 371.308,10)
+- Candidatos agora: 64 (R$ 14.981,15)
+- R$ 14.981,15 - R$ 157,00 (aluguel de maquina) = R$ 14.824,15 = totalizador liquido da Cielo.

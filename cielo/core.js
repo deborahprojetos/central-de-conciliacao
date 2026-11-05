@@ -252,9 +252,88 @@
     };
   }
 
+
+  // V48.4: CONCILIAÇÃO DAS CESSÕES.
+  // Cada linha "Valor cedido em negociação" (negativa) anula, no mesmo dia de pagamento,
+  // estabelecimento e bandeira, uma ou mais vendas que já foram cedidas ao banco.
+  // Essas vendas NÃO são mais recebível livre e não podem compor a Nota de Débito.
+  // O arquivo da Cielo não informa qual venda foi cedida, então a conciliação é feita pelo valor:
+  // procura-se, por grupo (data + estabelecimento + bandeira), o conjunto de vendas cuja soma
+  // fecha exatamente com cada cessão.
+  function isCedidoRow(r) {
+    return brandFree(r.tipoLancamento).includes("valor cedido em negociacao");
+  }
+  function brandFree(v) {
+    return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+  function isSaleCandidate(r) {
+    return cents(r.valorLiquido) > 0 && r.autorizacao && r.nsu && r.parcelaAtual >= 1 && !isCedidoRow(r);
+  }
+
+  function solveGroupCessions(sales, targets) {
+    // sales: [{key, c}] ; targets: centavos positivos (maiores primeiro)
+    const list = sales.slice().sort((a,b)=>b.c-a.c);
+    const used = new Array(list.length).fill(false);
+    const chosen = [];
+    let nodes = 0;
+    const LIMIT = 300000;
+
+    function fill(ti, start, rem) {
+      if (++nodes > LIMIT) return false;
+      if (rem === 0) {
+        if (ti + 1 === targets.length) return true;
+        return fill(ti + 1, 0, targets[ti + 1]);
+      }
+      for (let j = start; j < list.length; j++) {
+        if (used[j] || list[j].c > rem) continue;
+        used[j] = true; chosen.push(list[j].key);
+        if (fill(ti, j + 1, rem - list[j].c)) return true;
+        chosen.pop(); used[j] = false;
+      }
+      return false;
+    }
+
+    if (!targets.length) return {ok: true, keys: []};
+    const ok = fill(0, 0, targets[0]);
+    return {ok, keys: ok ? chosen.slice() : []};
+  }
+
+  function reconcileCessions(parsed) {
+    if (parsed._cessions) return parsed._cessions;
+    const groups = new Map();
+    parsed.rows.forEach(r => {
+      const k = [dateKey(r.dataCredito), r.estabelecimento, brandKey(r.bandeira)].join("|");
+      if (!groups.has(k)) groups.set(k, {sales: [], ceded: []});
+      const g = groups.get(k);
+      if (isCedidoRow(r)) g.ceded.push(-cents(r.valorLiquido));
+      else if (isSaleCandidate(r)) g.sales.push({key: String(r.sourceRow), c: cents(r.valorLiquido)});
+    });
+
+    const cededRows = new Set();
+    const unresolvedRows = new Set();
+    const unresolvedGroups = [];
+
+    for (const [k, g] of groups) {
+      const targets = g.ceded.filter(c => c > 0).sort((a,b)=>b-a);
+      if (!targets.length) continue;
+      const res = solveGroupCessions(g.sales, targets);
+      if (res.ok) {
+        res.keys.forEach(x => cededRows.add(x));
+      } else {
+        // Não foi possível identificar com certeza quais vendas foram cedidas:
+        // por segurança nenhuma venda desse grupo é oferecida.
+        g.sales.forEach(s => unresolvedRows.add(s.key));
+        unresolvedGroups.push(k);
+      }
+    }
+    parsed._cessions = {cededRows, unresolvedRows, unresolvedGroups};
+    return parsed._cessions;
+  }
+
   function eligibleNoteCandidates(parsed, anticipationFee) {
     const feeCents = cents(anticipationFee);
     if (feeCents <= 0) return [];
+    const cess = reconcileCessions(parsed);
     return parsed.rows
       .filter(r => {
         const tipo = String(r.tipoLancamento || "")
@@ -271,13 +350,17 @@
         const cedido = tipo.includes("valor cedido em negociacao");
         const bloqueado = String(r.autorizacao || "").trim() === "006896";
 
+        const k = String(r.sourceRow);
         return (
           cents(r.valorLiquido) > 0 &&
           r.autorizacao &&
           r.nsu &&
           r.parcelaAtual >= 1 &&
           !cedido &&
-          !bloqueado
+          !bloqueado &&
+          // V48.4: venda já cedida ao banco não é recebível livre.
+          !cess.cededRows.has(k) &&
+          !cess.unresolvedRows.has(k)
         );
       })
       .sort((a,b)=>
@@ -587,7 +670,7 @@
 
   global.CieloCore = {
     REQUIRED, CONFIG, parseRows, summarize, moneyBR, dateBR, parseDate,
-    eligibleNoteCandidates, suggestedNoteAllocation, buildNoteAllocation,
+    eligibleNoteCandidates, reconcileCessions, suggestedNoteAllocation, buildNoteAllocation,
     transactionChain, processingPlan, buildCielo04, buildControlReport
   };
 })(typeof window !== "undefined" ? window : globalThis);

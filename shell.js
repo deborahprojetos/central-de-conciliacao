@@ -38,7 +38,7 @@
     { id: 'itau-mvp', group: 'Conciliações', label: 'Análise de pagamentos', short: 'Pagamentos', path: 'itau-mvp/' },
     { id: 'itau-dealer', group: 'Conciliações', label: 'Conciliação Cobrança', short: 'Cobrança', path: 'itau-dealer/' },
     { id: 'extrato', group: 'Conciliações', label: 'Extrato do mês', short: 'Extrato', path: 'extrato/' },
-    { id: 'cielo', group: 'Cartões', label: 'Antecipação Cielo', short: 'Antecipação Cielo', path: 'cielo/?v=45' }
+    { id: 'cielo', group: 'Cartões', label: 'Antecipação Cielo', short: 'Antecipação Cielo', path: 'cielo/?v=48.4' }
   ];
 
   /* ---------------- Empresas (v2.3) ---------------- */

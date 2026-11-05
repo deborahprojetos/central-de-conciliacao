@@ -214,10 +214,18 @@
       renderAllocation();
       refreshAllocation();
 
-      if (parsed.warnings.length) {
+      const cess = CieloCore.reconcileCessions(parsed);
+      const extra = [];
+      extra.push(`${cess.cededRows.size} venda(s) já cedida(s) ao banco foram retiradas da lista (não são recebível livre).`);
+      if (cess.unresolvedGroups.length) {
+        extra.push(`${cess.unresolvedRows.size} venda(s) de ${cess.unresolvedGroups.length} grupo(s) data/bandeira não puderam ser conciliadas com a cessão e também foram ocultadas por segurança.`);
+      }
+      const allWarnings = extra.concat(parsed.warnings);
+
+      if (allWarnings.length) {
         $("warningBox").textContent =
-          parsed.warnings.slice(0,8).map(x=>"• "+x).join("\n") +
-          (parsed.warnings.length>8 ? "\n• ... e mais avisos." : "");
+          allWarnings.slice(0,8).map(x=>"• "+x).join("\n") +
+          (allWarnings.length>8 ? "\n• ... e mais avisos." : "");
         show("warningBox");
       } else {
         hide("warningBox");
