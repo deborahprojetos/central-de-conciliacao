@@ -46,27 +46,12 @@
     { id: 'veiculos', name: 'Veículos' },
     { id: 'france', name: 'France' },
     { id: 'motors', name: 'Motors' },
-    { id: 'suzuki', name: 'Suzuki' },
-    { id: 'agm', name: 'AGM' },
-    { id: 'agmagro', name: 'AGM Agro' },
-    { id: 'unia', name: 'Unia' },
-    { id: 'feld', name: 'Feld' },
-    { id: 'nasaadm', name: 'Nasa ADM' }
+    { id: 'suzuki', name: 'Suzuki' }
   ];
   function loadCompanies() {
     try {
       var list = JSON.parse(localStorage.getItem('cf:companies') || 'null');
-      if (Array.isArray(list) && list.length && list.every(function (c) { return c && c.id && c.name; })) {
-        // Migração única: inclui as empresas padrão que faltam na lista já salva.
-        if (localStorage.getItem('cf:companies:v2') !== '1') {
-          DEFAULT_COMPANIES.forEach(function (d) {
-            if (!list.some(function (c) { return c.id === d.id; })) list.push({ id: d.id, name: d.name });
-          });
-          localStorage.setItem('cf:companies', JSON.stringify(list));
-          localStorage.setItem('cf:companies:v2', '1');
-        }
-        return list;
-      }
+      if (Array.isArray(list) && list.length && list.every(function (c) { return c && c.id && c.name; })) return list;
     } catch (e) {}
     return DEFAULT_COMPANIES.slice();
   }

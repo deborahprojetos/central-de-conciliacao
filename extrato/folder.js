@@ -14,7 +14,7 @@
   var MAP_KEY = 'cf:extrato:mapa';
   var POLL_MS = 120000;
   // Quando a leitura dos arquivos melhora, a pasta inteira é lida de novo uma vez.
-  var READER_VERSION = '1.11';
+  var READER_VERSION = '1.9';
 
   var dir = null, granted = false, scanning = false, timer = null;
   var handles = {};   // caminho → FileSystemFileHandle (nesta sessão)
@@ -45,8 +45,7 @@
   function baseName(name) { return String(name).replace(/\.[^.]+$/, '').replace(/[.\s_-]+$/, '').trim(); }
   // Só entram arquivos com "EXTRATO" no nome; a empresa é o que vem depois da palavra
   // (ex.: "EXTRATO FRANCE.xlsx" → France).
-  function isExtrato(name) { return Shell.slug(baseName(name)) === '1extrato'; }
-  // Só entra o arquivo chamado "1 Extrato" (PDF ou Excel); "1_Extrato" e maiúsculas também valem.
+  function isExtrato(name) { return Shell.slug(baseName(name)).indexOf('extrato') !== -1; }
   function companyPart(name) {
     return baseName(name).replace(/\bextratos?\b/ig, ' ').replace(/^[\s._-]+|[\s._-]+$/g, '').replace(/\s+/g, ' ').trim();
   }
@@ -123,16 +122,6 @@
     return { company: null, suggestion: base };
   }
 
-  // Nome de exibição: a pasta do banco vira o título (ex.: "ITAU EXTRATO · 06 11").
-  // Se a pasta de cima for a empresa ou uma data, mantém o nome do arquivo.
-  function labelOf(entry) {
-    var f = entry.folders || [], parent = f.length ? f[f.length - 1] : '';
-    if (!parent || /^\d/.test(parent) || Shell.companyByName(parent)) return entry.name;
-    var day = '';
-    for (var i = f.length - 1; i >= 0; i--) if (/^\d{2}[\s._-]\d{2}$/.test(f[i])) { day = f[i]; break; }
-    return parent.toUpperCase() + ' EXTRATO' + (day ? ' · ' + day : '');
-  }
-
   async function processEntry(entry, file, idx) {
     var sig = file.size + ':' + file.lastModified;
     var rec = { sig: sig, label: entry.path, at: new Date().toISOString() };
@@ -153,7 +142,7 @@
       idx.files[entry.path] = rec;
       return;
     }
-    doImport(entry.path, labelOf(entry), parsed, who.company, rec.month, rec);
+    doImport(entry.path, entry.name, parsed, who.company, rec.month, rec);
     idx.files[entry.path] = rec;
   }
 
@@ -257,7 +246,7 @@
       var rec = idx.files[p];
       if (rec.status !== 'aguardando' || !parsedMem[p] || !handles[p]) return;
       var who = identify(handles[p], parsedMem[p]);
-      if (who.company && rec.month && !rec.conflict) { doImport(p, labelOf(handles[p]), parsedMem[p], who.company, rec.month, rec); changed = true; }
+      if (who.company && rec.month && !rec.conflict) { doImport(p, handles[p].name, parsedMem[p], who.company, rec.month, rec); changed = true; }
     });
     applyPatches(idx);
     if (changed || save) setJSON(INDEX_KEY, idx);
