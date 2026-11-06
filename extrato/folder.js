@@ -14,7 +14,7 @@
   var MAP_KEY = 'cf:extrato:mapa';
   var POLL_MS = 120000;
   // Quando a leitura dos arquivos melhora, a pasta inteira é lida de novo uma vez.
-  var READER_VERSION = '1.10';
+  var READER_VERSION = '1.11';
 
   var dir = null, granted = false, scanning = false, timer = null;
   var handles = {};   // caminho → FileSystemFileHandle (nesta sessão)
@@ -45,7 +45,8 @@
   function baseName(name) { return String(name).replace(/\.[^.]+$/, '').replace(/[.\s_-]+$/, '').trim(); }
   // Só entram arquivos com "EXTRATO" no nome; a empresa é o que vem depois da palavra
   // (ex.: "EXTRATO FRANCE.xlsx" → France).
-  function isExtrato(name) { return Shell.slug(baseName(name)).indexOf('extrato') !== -1; }
+  function isExtrato(name) { return Shell.slug(baseName(name)) === '1extrato'; }
+  // Só entra o arquivo chamado "1 Extrato" (PDF ou Excel); "1_Extrato" e maiúsculas também valem.
   function companyPart(name) {
     return baseName(name).replace(/\bextratos?\b/ig, ' ').replace(/^[\s._-]+|[\s._-]+$/g, '').replace(/\s+/g, ' ').trim();
   }
