@@ -490,11 +490,9 @@
     var lastGroup = '';
     MODULES.forEach(function (m) {
       if (m.group !== lastGroup) { html += '<p class="cf-group">' + m.group + '</p>'; lastGroup = m.group; }
-      var pend = pendingFor(m.id);
       var isActive = active === m.id;
       html += '<a class="cf-item' + (isActive ? ' is-active' : '') + '" href="' + BASE + m.path + '" title="' + m.label + '"' + (isActive ? ' aria-current="page"' : '') + '>' + icon(m.id) +
-        '<span class="cf-label">' + m.label + '</span>' +
-        (pend ? '<span class="cf-pill" title="' + pend + ' pendente(s)">' + (pend > 99 ? '99+' : pend) + '</span>' : '') + '</a>';
+        '<span class="cf-label">' + m.label + '</span></a>';
     });
     html += '</nav>';
 
