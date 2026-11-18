@@ -88,7 +88,7 @@
         if (!search) return true;
         return [
           r.autorizacao, r.nsu, r.parcelaAtual + "/" + r.totalParcelas,
-          CieloCore.dateBR(r.dataCredito), CieloCore.moneyBR(r.valorLiquido)
+          CieloCore.dateBR(r.dataCredito), CieloCore.moneyBR(r.valorBruto)
         ].join(" ").toLowerCase().includes(search);
       })
       .slice(0, 80);
@@ -103,7 +103,7 @@
         `<td>${r.autorizacao}</td>` +
         `<td>${r.nsu}</td>` +
         `<td>${r.parcelaAtual}/${r.totalParcelas}</td>` +
-        `<td class="money">${CieloCore.moneyBR(r.valorLiquido)}</td>`;
+        `<td class="money">${CieloCore.moneyBR(r.valorBruto)}</td>`;
       host.appendChild(tr);
     });
 
@@ -244,7 +244,7 @@
     $("titles").textContent = summary.titles.toLocaleString("pt-BR");
     $("gross").textContent = CieloCore.moneyBR(summary.gross);
     $("adminFee").textContent = CieloCore.moneyBR(summary.fee);
-    $("totalClear").textContent = CieloCore.moneyBR(summary.net);
+    $("totalClear").textContent = CieloCore.moneyBR(plan ? plan.totalBaixa : summary.net);
     $("noteFee").textContent = CieloCore.moneyBR(fee);
     $("cielo04Total").textContent = plan ? CieloCore.moneyBR(plan.cielo04) : "—";
     $("establishments").textContent = summary.establishments.join(", ");
