@@ -43,3 +43,16 @@ h3{font-size:14px;margin:20px 0 8px}.chain{display:flex;gap:8px;align-items:cent
 @media(max-width:560px){.allocation-summary{grid-template-columns:1fr}.allocation-tools{flex-direction:column;align-items:stretch}}
 
 .date-input{border:1px solid #cfd8e3;border-radius:10px;padding:10px 12px;font-size:15px;max-width:260px;width:100%;background:#fff;color:#172033;outline:none}.date-input:focus{border-color:#2157d5;box-shadow:0 0 0 3px rgba(33,87,213,.10)}
+
+/* Alocação opcional: o detalhamento fica sempre visível. */
+.allocation-collapse{margin-bottom:16px;border:1px solid #dfe5ec;border-radius:12px;background:#fff}
+.allocation-collapse-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;padding:14px 16px}
+.allocation-collapse-trigger::-webkit-details-marker{display:none}
+.allocation-collapse-trigger:focus-visible{outline:2px solid #2157d5;outline-offset:2px}
+.allocation-collapse-label{display:flex;align-items:center;gap:12px;color:#172033;font-size:16px}
+.allocation-collapse-label .step-number{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:10px;background:#eef3ff;color:#2157d5;font-weight:800}
+.allocation-collapse-action{display:inline-flex;align-items:center;gap:9px;color:#2157d5;font-size:13px;font-weight:700}
+.allocation-chevron{font-size:22px;line-height:1;transition:transform .2s}
+.allocation-collapse[open] .allocation-chevron{transform:rotate(180deg)}
+.allocation-collapse-content{padding:0 14px 16px;border-top:1px solid #edf0f4}
+@media(max-width:560px){.allocation-collapse-trigger{padding:12px;align-items:flex-start}.allocation-collapse-label{font-size:14px}.allocation-collapse-action{font-size:12px}.allocation-collapse-content{padding:0 10px 12px}}
