@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '2.6';
+  var VERSION = '2.7';
   var root = document.documentElement;
   root.classList.add('cf-shell');
 
@@ -21,10 +21,10 @@
   var ICONS = {
     painel: '<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>',
     difal: '<path d="M12 3v18M5 7h14M7 7l-3 7a3.5 3.5 0 0 0 6 0L7 7Zm10 0-3 7a3.5 3.5 0 0 0 6 0l-3-7Z"/>',
-    'itau-mvp': '<path d="M3 7h13m0 0-3.5-3.5M16 7l-3.5 3.5M21 17H8m0 0 3.5-3.5M8 17l3.5 3.5"/>',
-    'itau-dealer': '<path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2V4Zm4 5h6m-6 4h6"/>',
-    cielo: '<path d="M7 3h7l5 5v13H7V3Zm7 0v5h5M10 13h6m-6 4h6"/>',
-    extrato: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21V3Zm3 5h6m-6 4h6m-6 4h4"/>',
+    'itau-mvp': '<rect x="3" y="7" width="13" height="12" rx="2"/><path d="M3 10h13M11 4h10v10M15 10l6-6"/>',
+    'itau-dealer': '<circle cx="8" cy="16" r="4"/><path d="M8 14v4m-2-2h4M14 7h7m-3.5-3.5L21 7l-3.5 3.5M14 13h7"/>',
+    cielo: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M7 15h4M16 13l2 2-2 2"/>',
+    extrato: '<path d="M4 20V4m0 16h17M8 15l4-4 3 2 5-7M17 6h3v3"/>',
     sair: '<path d="M14 4h5v16h-5M10 8l-4 4 4 4m-4-4h11"/>',
     recolher: '<path d="M15 6l-6 6 6 6"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>'
