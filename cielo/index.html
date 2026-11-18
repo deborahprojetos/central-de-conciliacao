@@ -62,7 +62,12 @@
     </section>
 
     <section class="card">
-      <div class="heading"><b>3</b><div><h2>Alocação da Nota de Débito</h2></div></div>
+      <details class="allocation-collapse">
+        <summary class="allocation-collapse-trigger">
+          <span class="allocation-collapse-label"><span class="step-number">3</span><strong>Alocação da Nota de Débito</strong></span>
+          <span class="allocation-collapse-action">Ver / editar alocação <span class="allocation-chevron" aria-hidden="true">⌄</span></span>
+        </summary>
+        <div class="allocation-collapse-content">
 
       <div class="allocation-summary">
         <div><span>Nota de Débito</span><strong id="noteValue">—</strong></div>
@@ -94,6 +99,9 @@
           <tbody id="allocationBody"></tbody>
         </table>
       </div>
+
+        </div>
+      </details>
 
       <h3>Detalhamento da distribuição</h3>
       <div class="table-wrap">
