@@ -364,7 +364,7 @@
         );
       })
       .sort((a,b)=>
-        cents(b.valorLiquido)-cents(a.valorLiquido) ||
+        cents(b.valorBruto)-cents(a.valorBruto) ||
         a.dataCredito-b.dataCredito ||
         a.sourceRow-b.sourceRow
       );
@@ -396,7 +396,10 @@
 
     for (const r of candidates) {
       if (remaining <= 0) break;
-      const original = cents(r.valorLiquido);
+      // Para a baixa manual da ND, o Dealer utiliza o bruto da parcela,
+      // nunca o líquido após a taxa administrativa da Cielo.
+      const original = cents(r.valorBruto);
+      if (original <= 0) continue;
       const applied = Math.min(original, remaining);
       if (applied <= 0) continue;
 
@@ -436,10 +439,16 @@
       ? buildNoteAllocation(parsed, anticipationFee, selectedRows)
       : suggestedNoteAllocation(parsed, anticipationFee);
 
+    // Somente parcelas efetivamente usadas na ND adotam o bruto.
+    // As demais permanecem pelo líquido, preservando a regra existente.
+    const grossAdjustment = allocation.allocations.reduce(
+      (sum, a) => sum + a.originalCents - cents(a.row.valorLiquido), 0
+    );
+    const totalBaixaCents = cents(s.net) + grossAdjustment;
     return {
-      totalBaixa: s.net,
+      totalBaixa: fromCents(totalBaixaCents),
       notaDebito: fromCents(allocation.noteCents),
-      cielo04: fromCents(cents(s.net) - allocation.noteCents),
+      cielo04: fromCents(totalBaixaCents - allocation.noteCents),
       allocations: allocation.allocations,
       selectedCount: allocation.allocations.length,
       selectedTotal: fromCents(allocation.selectedTotalCents)
@@ -655,6 +664,8 @@
       moneyBR(plan.notaDebito) + " (Nota de Débito manual) + " +
       moneyBR(plan.cielo04) + " (CIELO04) = " + moneyBR(plan.totalBaixa),
       "",
+      "Parcelas usadas na ND: valor bruto sem dedução de tarifa.",
+      "Demais parcelas: valor líquido da planilha.",
       "Total bruto da planilha: " + moneyBR(s.gross),
       "Taxa administrativa Cielo: " + moneyBR(s.fee),
       "Total líquido original: " + moneyBR(s.net),
