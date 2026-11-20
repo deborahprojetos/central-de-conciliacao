@@ -24,10 +24,10 @@ let currentPrint=null;
 function setPrint(file,autoRead=false){
 if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type)){ $('ocrStatus').textContent='Escolha uma imagem PNG, JPG ou WEBP.';return;}
 if(file.size>15*1024*1024){$('ocrStatus').textContent='Imagem muito grande. Limite de 15 MB.';return;}
-currentPrint=file;$('extrair').disabled=false;
+currentPrint=file;$('extrair').disabled=false;$('plataforma').value='';$('copiar').disabled=true;
 const reader=new FileReader();
 reader.onload=()=>{$('printPreview').src=reader.result;$('printPreview').classList.remove('hidden')};
-reader.readAsDataURL(file);$('ocrStatus').textContent='Print recebido.';if(autoRead) extractPrint();
+reader.readAsDataURL(file);$('ocrStatus').textContent='Print recebido.';if(autoRead) extractPrint();else generate();
 }
 $('print').addEventListener('change',e=>setPrint(e.target.files[0]));
 const drop=$('dropPrint');
@@ -56,9 +56,9 @@ return text;
 let readingPrint=false;
 async function extractPrint(){
  if(!currentPrint||readingPrint)return;
- if(!window.Tesseract){$('ocrStatus').textContent='OCR não carregado. Atualize a página para tentar novamente.';return}
+ if(!window.Tesseract){$('ocrStatus').textContent='OCR não carregado. Atualize a página para tentar novamente.';generate();return}
  const snapshot=currentPrint;
- readingPrint=true;$('extrair').disabled=true;
+ readingPrint=true;$('extrair').disabled=true;generate();
  let worker=null,timeoutId=null;
  const status=$('ocrStatus');
  try{
@@ -91,11 +91,11 @@ async function extractPrint(){
   const result=await Promise.race([process(),timeout]);
   if(currentPrint!==snapshot)return;
   $('plataforma').value=String(result||'').trim();
-  if(!$('plataforma').value){status.textContent='Nenhum texto reconhecido. Tente recortar somente as linhas da plataforma.';return}
+  if(!$('plataforma').value){status.textContent='Nenhum texto reconhecido. Tente recortar somente as linhas da plataforma.';generate();return}
   generate();
   status.textContent='Leitura concluída. Confira os campos e o e-mail gerado abaixo.';
  }catch(err){
-  status.textContent='Não foi possível extrair: '+String(err?.message||err).slice(0,160);
+  status.textContent='Não foi possível extrair: '+String(err?.message||err).slice(0,160);generate();
   console.error('Leitura do print:',err);
  }finally{
   if(timeoutId)clearTimeout(timeoutId);
@@ -105,7 +105,32 @@ async function extractPrint(){
 }
 $('extrair').addEventListener('click',extractPrint);
 
-function table(head,data,keys){return '<table><thead><tr>'+head.map(h=>'<th>'+escape(h)+'</th>').join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+keys.map(k=>'<td'+(['saldo','valor'].includes(k)?' class="money"':'')+'>'+escape(r[k])+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
-function generate(){dealerRows=parseDealer($('dealer').value);platformRows=parsePlatform($('plataforma').value);let notices=[];if($('dealer').value.trim()&&!dealerRows.length)notices.push('Nenhuma linha do Dealer reconhecida.');if($('plataforma').value.trim()&&!platformRows.length)notices.push('Nenhuma linha da plataforma reconhecida.');if(platformRows.some(r=>!r.fornecedor||!r.origem||!r.cpf))notices.push('Alguns registros da plataforma estão incompletos. Confira fornecedor, Ag/Origem e CPF/CNPJ antes de enviar.');if(dealerRows.some(r=>!r.saldo||!r.observacao))notices.push('Alguns registros do Dealer estão incompletos. Confira saldo e observação.');$('avisos').classList.toggle('hidden',!notices.length);$('avisos').textContent=notices.join(' ');let content='<p>'+escape($('mensagem').value)+'</p>';if(dealerRows.length)content+='<h3>1. Dados do Dealer ('+dealerRows.length+')</h3>'+table(['Data','Saldo','Observação'],dealerRows,['data','saldo','observacao']);if(platformRows.length)content+='<h3>2. Dados da Plataforma ('+platformRows.length+')</h3>'+table(['Data','Lançamento','Fornecedor','Ag/Origem','CPF/CNPJ','Valor'],platformRows,['data','lancamento','fornecedor','origem','cpf','valor']);content+='<p style="margin-top:20px">Aguardo retorno para regularização das pendências.</p>';$('saida').innerHTML=(dealerRows.length||platformRows.length)?content:'<p>Nenhum registro reconhecido. Cole os dados e tente novamente.</p>';$('copiar').disabled=!(dealerRows.length||platformRows.length);$('status').textContent=dealerRows.length+' registro(s) Dealer e '+platformRows.length+' da plataforma.'}
+
+function table(head,data,keys){
+ const td='border:1px solid #cbd5e1;padding:7px 9px;text-align:left;vertical-align:top;font:12px Arial,sans-serif;color:#1d2b45;white-space:normal;';
+ return '<table cellpadding="0" cellspacing="0" border="1" style="border-collapse:collapse;width:100%;font:12px Arial,sans-serif;border:1px solid #cbd5e1"><thead><tr>'+head.map(h=>'<th scope="col" bgcolor="#e9eff7" style="'+td+'background-color:#e9eff7;font-weight:bold;">'+escape(h)+'</th>').join('')+'</tr></thead><tbody>'+data.map((r,i)=>'<tr>'+keys.map(k=>'<td style="'+td+(k==='saldo'||k==='valor'?'text-align:right;white-space:nowrap;':'')+'">'+escape(r[k]||'')+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+}
+function generate(){
+ dealerRows=parseDealer($('dealer').value);
+ platformRows=parsePlatform($('plataforma').value);
+ const notices=[];
+ if($('dealer').value.trim()&&!dealerRows.length)notices.push('Nenhuma linha do Dealer reconhecida.');
+ if(currentPrint&&!platformRows.length)notices.push(readingPrint?'Aguarde a leitura da imagem para incluir os dados da plataforma.':'A plataforma não foi extraída. Clique em Extrair dados do print e confira o resultado.');
+ if($('plataforma').value.trim()&&!platformRows.length)notices.push('Não foi possível estruturar os dados da plataforma. Confira o texto reconhecido.');
+ if(platformRows.some(r=>!r.fornecedor||!r.origem||!r.cpf||!r.valor||!r.lancamento))notices.push('Os registros da plataforma estão incompletos. Confira fornecedor, Ag/Origem, CPF/CNPJ, lançamento e valor.');
+ if(dealerRows.some(r=>!r.saldo||!r.observacao))notices.push('Alguns registros do Dealer estão incompletos.');
+ $('avisos').classList.toggle('hidden',!notices.length);
+ $('avisos').textContent=notices.join(' ');
+ let content='<p style="font:14px Arial,sans-serif;margin:0 0 16px;">'+escape($('mensagem').value)+'</p>';
+ if(dealerRows.length)content+='<h3 style="font:bold 14px Arial,sans-serif;margin:18px 0 9px;">1. Dados do Dealer ('+dealerRows.length+')</h3>'+table(['Data','Saldo','Observação'],dealerRows,['data','saldo','observacao']);
+ if(platformRows.length)content+='<h3 style="font:bold 14px Arial,sans-serif;margin:22px 0 9px;">2. Dados da Plataforma ('+platformRows.length+')</h3>'+table(['Data','Lançamento','Fornecedor','Ag/Origem','CPF/CNPJ','Valor'],platformRows,['data','lancamento','fornecedor','origem','cpf','valor']);
+ content+='<p style="font:14px Arial,sans-serif;margin:20px 0 0;">Aguardo retorno para regularização das pendências.</p>';
+ const hasAny=dealerRows.length||platformRows.length;
+ $('saida').innerHTML=hasAny?content:'<p>Nenhum registro reconhecido. Cole os dados e tente novamente.</p>';
+ const platformMissing=Boolean(currentPrint)&&(!platformRows.length||readingPrint);
+ $('copiar').disabled=!hasAny||platformMissing;
+ $('status').textContent=dealerRows.length+' registro(s) Dealer e '+platformRows.length+' da plataforma.'+(platformMissing?' Plataforma pendente: cópia bloqueada.':'');
+}
+
 $('gerar').addEventListener('click',generate);$('limpar').addEventListener('click',()=>{$('dealer').value='';$('plataforma').value='';currentPrint=null;$('print').value='';$('printPreview').classList.add('hidden');$('printPreview').removeAttribute('src');$('extrair').disabled=true;$('ocrStatus').textContent='';$('saida').innerHTML='<p>O modelo padronizado aparecerá aqui depois de clicar em Gerar e-mail.</p>';$('avisos').classList.add('hidden');$('status').textContent='';$('copiar').disabled=true});
 $('copiar').addEventListener('click',async()=>{let html='<div><p><b>Assunto:</b> '+escape($('assunto').value)+'</p>'+$('saida').innerHTML+'</div>';let plain='Assunto: '+$('assunto').value+'\n\n'+$('saida').innerText;try{if(navigator.clipboard&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([plain],{type:'text/plain'})})]);$('status').textContent='E-mail formatado copiado.'}else{await navigator.clipboard.writeText(plain);$('status').textContent='Texto copiado.'}}catch(e){$('status').textContent='Cópia bloqueada pelo navegador. Selecione o conteúdo da prévia e copie manualmente.'}});})();
