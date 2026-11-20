@@ -27,7 +27,7 @@ if(file.size>15*1024*1024){$('ocrStatus').textContent='Imagem muito grande. Limi
 currentPrint=file;$('extrair').disabled=false;
 const reader=new FileReader();
 reader.onload=()=>{$('printPreview').src=reader.result;$('printPreview').classList.remove('hidden')};
-reader.readAsDataURL(file);$('ocrStatus').textContent='Print recebido. Iniciando leitura...';if(autoRead) extractPrint();
+reader.readAsDataURL(file);$('ocrStatus').textContent='Print recebido.';if(autoRead) extractPrint();
 }
 $('print').addEventListener('change',e=>setPrint(e.target.files[0]));
 const drop=$('dropPrint');
@@ -53,21 +53,55 @@ const mapped=tsvToRows(tsv,width);
 if(mapped&&mapped.trim())return mapped;
 return text;
 }
+let readingPrint=false;
 async function extractPrint(){
-if(!currentPrint)return;
-if(!window.Tesseract){$('ocrStatus').textContent='Leitor de imagem indisponível. Verifique sua conexão e tente novamente.';return;}
-$('extrair').disabled=true;$('gerar').disabled=true;
-let worker=null;
-try{
-$('ocrStatus').textContent='Lendo o print...';
-worker=await Tesseract.createWorker('por',1,{logger:m=>{if(m.status==='recognizing text')$('ocrStatus').textContent='Reconhecendo dados: '+Math.round((m.progress||0)*100)+'%';}});
-const result=await worker.recognize(currentPrint,{}, {text:true,tsv:true});
-const raw=platformFromImage(result.data.text,result.data.tsv, result.data.width||$('printPreview').naturalWidth);
-$('plataforma').value=raw.trim();
-$('ocrStatus').textContent=raw.trim()?'Dados extraídos. Confira a tabela gerada abaixo.':'Não encontrei texto legível nesse print.';
-generate();
-}catch(err){$('ocrStatus').textContent='Erro ao ler print: '+String(err&&err.message||err).slice(0,140)+'';console.error('OCR:',err)}
-finally{if(worker)try{await worker.terminate()}catch(e){};$('extrair').disabled=false;$('gerar').disabled=false}
+ if(!currentPrint||readingPrint)return;
+ if(!window.Tesseract){$('ocrStatus').textContent='OCR não carregado. Atualize a página para tentar novamente.';return}
+ const snapshot=currentPrint;
+ readingPrint=true;$('extrair').disabled=true;
+ let worker=null,timeoutId=null;
+ const status=$('ocrStatus');
+ try{
+  status.textContent='Preparando a leitura da imagem...';
+  const timeout=new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('A leitura demorou demais. Tente recortar o print e colar novamente.')),45000)});
+  const process=async()=>{
+    worker=await Tesseract.createWorker('eng',1,{
+      logger:m=>{
+       if(!m||!m.status)return;
+       if(m.status==='recognizing text')status.textContent='Lendo caracteres: '+Math.round((m.progress||0)*100)+'%';
+       else status.textContent='OCR: '+m.status;
+      },
+      errorHandler:err=>{console.error('OCR worker:',err)}
+    });
+    status.textContent='Analisando a imagem...';
+    let image=snapshot;
+    try{
+      const bitmap=await createImageBitmap(snapshot);
+      const scale=Math.min(3,Math.max(1.5,1800/bitmap.width));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.round(bitmap.width*scale);
+      canvas.height=Math.round(bitmap.height*scale);
+      canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
+      bitmap.close();
+      image=canvas;
+    }catch(e){console.warn('Ampliação da imagem não disponível:',e)}
+    const data=(await worker.recognize(image,{}, {text:true,tsv:true})).data||{};
+    return platformFromImage(data.text||'',data.tsv||'',image.width||$('printPreview').naturalWidth);
+  };
+  const result=await Promise.race([process(),timeout]);
+  if(currentPrint!==snapshot)return;
+  $('plataforma').value=String(result||'').trim();
+  if(!$('plataforma').value){status.textContent='Nenhum texto reconhecido. Tente recortar somente as linhas da plataforma.';return}
+  generate();
+  status.textContent='Leitura concluída. Confira os campos e o e-mail gerado abaixo.';
+ }catch(err){
+  status.textContent='Não foi possível extrair: '+String(err?.message||err).slice(0,160);
+  console.error('Leitura do print:',err);
+ }finally{
+  if(timeoutId)clearTimeout(timeoutId);
+  readingPrint=false;$('extrair').disabled=false;
+  if(worker)worker.terminate().catch(()=>{});
+ }
 }
 $('extrair').addEventListener('click',extractPrint);
 
