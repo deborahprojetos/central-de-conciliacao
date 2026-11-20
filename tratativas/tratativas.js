@@ -100,6 +100,7 @@ async function extractPrint(){
  }finally{
   if(timeoutId)clearTimeout(timeoutId);
   readingPrint=false;$('extrair').disabled=false;
+  generate();
   if(worker)worker.terminate().catch(()=>{});
  }
 }
