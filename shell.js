@@ -1,8 +1,7 @@
 /*
   Central Financeira · Shell compartilhado (v2.1)
   - Desenha o menu lateral em todas as páginas da Central.
-  - Registra, neste navegador, um resumo dos resultados de cada aplicação
-    para alimentar os indicadores do painel. Não altera a lógica das aplicações.
+  - Mantém os registros operacionais de conferências e pendências por empresa.
 */
 (function () {
   'use strict';
@@ -19,8 +18,7 @@
   var BASE = script ? new URL('./', script.src).href : new URL('/', location.href).href;
 
   var ICONS = {
-    painel: '<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>',
-    difal: '<path d="M12 3v18M5 7h14M7 7l-3 7a3.5 3.5 0 0 0 6 0L7 7Zm10 0-3 7a3.5 3.5 0 0 0 6 0l-3-7Z"/>',
+      difal: '<path d="M12 3v18M5 7h14M7 7l-3 7a3.5 3.5 0 0 0 6 0L7 7Zm10 0-3 7a3.5 3.5 0 0 0 6 0l-3-7Z"/>',
     'itau-mvp': '<rect x="3" y="7" width="13" height="12" rx="2"/><path d="M3 10h13M11 4h10v10M15 10l6-6"/>',
     'itau-dealer': '<circle cx="8" cy="16" r="4"/><path d="M8 14v4m-2-2h4M14 7h7m-3.5-3.5L21 7l-3.5 3.5M14 13h7"/>',
     cielo: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M7 15h4M16 13l2 2-2 2"/>',
@@ -64,7 +62,7 @@
   }
   var DIFAL_BASE = 'difal_conciliacao_final_1_0';
 
-  // Indicadores do painel contam a partir de 28/10/2026 11:14 (horário de Brasília).
+  // Histórico de conferências contado a partir de 28/10/2026 11:14 (horário de Brasília).
   var INDICATORS_START = '2026-10-28T14:14:00.000Z';
   try {
     if (localStorage.getItem('cf:reset') !== INDICATORS_START) {
@@ -84,10 +82,9 @@
     for (var i = 0; i < MODULES.length; i++) {
       if (path.indexOf('/' + MODULES[i].id + '/') !== -1) return MODULES[i].id;
     }
-    return 'painel';
+    return 'difal';
   }
   function resolveCompany(mod) {
-    if (mod === 'painel') return null;
     var m = location.hash.match(/empresa=([a-z0-9]+)/);
     if (m && companyById(m[1])) {
       try { localStorage.setItem('cf:company:' + mod, m[1]); } catch (e) {}
@@ -357,7 +354,6 @@
     root.setAttribute('data-empresa', COMPANY || '');
   }
   function buildCompanyBar() {
-    if (ACTIVE === 'painel') return;
     var main = document.querySelector('main');
     if (!main) return;
     var bar = document.createElement('div');
@@ -454,7 +450,7 @@
       (COMPANIES.length > MAX_BUTTONS ? '<input type="search" class="cf-modal-search" placeholder="Buscar empresa" aria-label="Buscar empresa">' : '') +
       '<div class="cf-modal-options">' +
       COMPANIES.map(function (c) { return '<button type="button" data-company="' + escHtml(c.id) + '">' + escHtml(c.name) + '</button>'; }).join('') +
-      '</div><a class="cf-modal-back" href="' + BASE + '">Voltar ao painel</a></div>';
+      '</div><a class="cf-modal-back" href="' + BASE + 'difal/">Voltar à Conciliação Banco Util</a></div>';
     document.body.appendChild(m);
     m.addEventListener('click', function (e) {
       var b = e.target.closest('button[data-company]');
@@ -484,7 +480,7 @@
     aside.setAttribute('aria-label', 'Menu da Central Financeira');
 
     var html = '';
-    html += '<div class="cf-brand"><a href="' + BASE + '" class="cf-brand-link"><span class="cf-mark">CF</span><span class="cf-brand-text"><strong>Central Financeira</strong></span></a>';
+    html += '<div class="cf-brand"><a href="' + BASE + 'difal/" class="cf-brand-link"><span class="cf-mark">CF</span><span class="cf-brand-text"><strong>Central Financeira</strong></span></a>';
     html += '<button type="button" class="cf-collapse" aria-label="Recolher menu" title="Recolher menu">' + icon('recolher') + '</button></div>';
     html += '<nav class="cf-nav">';
 
@@ -504,7 +500,7 @@
 
     var mobileBar = document.createElement('div');
     mobileBar.className = 'cf-mobilebar';
-    mobileBar.innerHTML = '<button type="button" class="cf-burger" aria-controls="cf-sidebar" aria-expanded="false" aria-label="Abrir menu">' + icon('menu') + '</button><a href="' + BASE + '" class="cf-mobile-title"><span class="cf-mark">CF</span>Central Financeira</a>' +
+    mobileBar.innerHTML = '<button type="button" class="cf-burger" aria-controls="cf-sidebar" aria-expanded="false" aria-label="Abrir menu">' + icon('menu') + '</button><a href="' + BASE + 'difal/" class="cf-mobile-title"><span class="cf-mark">CF</span>Central Financeira</a>' +
 ''; 
 
     var scrim = document.createElement('div');
@@ -730,7 +726,7 @@
     });
   }
 
-  // API usada pelo painel.
+  // API compartilhada entre os módulos operacionais.
   window.CentralShell = {
     MODULES: MODULES, get COMPANIES() { return COMPANIES; }, Store: Store, BASE: BASE, VERSION: VERSION,
     company: function () { return COMPANY; }, companyName: companyName,
@@ -748,7 +744,7 @@
     refreshCompanyUI();
     startCapture(active);
     setupDropZones();
-    if (active !== 'painel' && !COMPANY) openCompanyModal();
+    if (!COMPANY) openCompanyModal();
     try {
       var msg = sessionStorage.getItem('cf:toast');
       if (msg) { sessionStorage.removeItem('cf:toast'); setTimeout(function () { toast(msg); }, 300); }
