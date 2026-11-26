@@ -22,7 +22,6 @@
     'itau-mvp': '<rect x="3" y="7" width="13" height="12" rx="2"/><path d="M3 10h13M11 4h10v10M15 10l6-6"/>',
     'itau-dealer': '<circle cx="8" cy="16" r="4"/><path d="M8 14v4m-2-2h4M14 7h7m-3.5-3.5L21 7l-3.5 3.5M14 13h7"/>',
     cielo: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M7 15h4M16 13l2 2-2 2"/>',
-    tratativas: '<path d="M4 4h12l4 4v12H4zM16 4v4h4M7 12h10M7 16h7"/>',
     extrato: '<path d="M4 20V4m0 16h17M8 15l4-4 3 2 5-7M17 6h3v3"/>',
     sair: '<path d="M14 4h5v16h-5M10 8l-4 4 4 4m-4-4h11"/>',
     recolher: '<path d="M15 6l-6 6 6 6"/>',
@@ -37,7 +36,6 @@
     { id: 'itau-mvp', group: 'Conciliações', label: 'Análise de pagamentos', short: 'Pagamentos', path: 'itau-mvp/' },
     { id: 'itau-dealer', group: 'Conciliações', label: 'Conciliação Cobrança', short: 'Cobrança', path: 'itau-dealer/' },
     { id: 'extrato', group: 'Conciliações', label: 'Extrato do mês', short: 'Extrato', path: 'extrato/' },
-    { id: 'tratativas', group: 'Ferramentas', label: 'Gerador de Tratativas', short: 'Tratativas', path: 'tratativas/' },
     { id: 'cielo', group: 'Cartões', label: 'Antecipação Cielo', short: 'Antecipação Cielo', path: 'cielo/?v=48.4' }
   ];
 
