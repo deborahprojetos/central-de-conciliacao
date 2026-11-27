@@ -190,6 +190,16 @@
       if (sicoob) return sicoob;
     }
     lines.forEach(function (l) { l.cells = classify(l); });
+    var santanderBalance = false;
+    if (!bank || /^(?:banco)?santander/.test(bank)) {
+      lines.forEach(function (l) {
+        var label = l.cells.filter(function (c) { return c.kind === 'text'; })
+          .map(function (c) { return c.t; }).join(' ');
+        l.santanderDailyBalance = /^saldo do dia c\.?\s*c\.?$/i.test(label);
+        l.santanderBalance = l.santanderDailyBalance || /^saldo anterior(?: c\.?\s*c\.?)?$/i.test(label);
+        if (l.santanderDailyBalance && l.cells.some(function (c) { return c.kind === 'money'; })) santanderBalance = true;
+      });
+    }
     var isBB = /^(?:bb|bancodobrasil)$/.test(bank || '') || lines.some(function (l) {
       return /\bbanco do brasil\b/i.test(l.tokens.map(function (t) { return t.t; }).join(' '));
     });
@@ -245,7 +255,7 @@
     var cols = explicitHeader ? explicitColumns : clusterEdges(edges, 14).filter(function (g) {
       return g.count >= minCount || (closingValue && candidateCount >= 2 && (candidateCount <= 3 || Math.abs(closingValue.x1 - g.x) <= 14));
     });
-    if (!cols.length && closingValue) cols = clusterEdges(edges, 14);
+    if (!cols.length && (closingValue || santanderBalance)) cols = clusterEdges(edges, 14);
     if (!cols.length) return { columns: [], rows: [], period: '', lineCount: lines.length };
 
     function colOf(cell) {
@@ -285,6 +295,11 @@
         ? i === colOf(closingValue) : /saldo/i.test(name);
       return { id: 'c' + i, name: saldo && closingValue ? 'Saldo' : name, saldo: saldo };
     });
+    var santanderBalanceColumn = santanderBalance && columns.find(function (column) { return column.saldo; });
+    if (santanderBalance && !santanderBalanceColumn) {
+      santanderBalanceColumn = { id: 'c' + columns.length, name: 'Saldo', saldo: true };
+      columns.push(santanderBalanceColumn);
+    }
 
     // 4) Colunas de texto pelo cabeçalho (Lançamentos, Razão Social, CNPJ/CPF...).
     var textCols = [];
@@ -325,6 +340,11 @@
       l.cells.forEach(function (c) {
         if (c === dateCell) return;
         if (c.kind === 'money') {
+          if (santanderBalance && l.santanderBalance) {
+            values[santanderBalanceColumn.id] = c.v;
+            nValues = 1;
+            return;
+          }
           var ci = colOf(c);
           if (ci >= 0 && values['c' + ci] === undefined) {
             if (!isBradesco || l !== closingLine || columns[ci].saldo) {
@@ -337,6 +357,7 @@
       });
       if (l.candidate && nValues && lastDate) {
         var row = { dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy, values: values, page: l.page, y: l.y, parts: texts, closing: l === closingLine };
+        if (santanderBalance && l.santanderDailyBalance) row.saldoAt = 'end';
         rows.push(row); rowLines.push(li);
       } else {
         l.loose = texts;
@@ -363,7 +384,7 @@
       r.hist = j(f.hist); r.party = j(f.party); r.taxId = j(f.taxId); r.origin = j(f.origin);
       r.desc = [r.hist, r.party].filter(Boolean).join(' · ');
       r.extra = [r.origin ? 'Ag/origem ' + r.origin : '', r.taxId ? 'CPF/CNPJ ' + r.taxId : ''].filter(Boolean).join(' · ');
-      r.saldo = r.closing || /\bsaldo\b/i.test(r.desc);
+      r.saldo = r.closing || r.saldoAt === 'end' || /\bsaldo\b/i.test(r.desc);
       delete r.closing;
       var sig = r.dd + '/' + r.mm + '|' + r.desc + '|' + JSON.stringify(r.values);
       occ[sig] = (occ[sig] || 0) + 1;
@@ -574,7 +595,7 @@
     var movDays = {};
     result.rows.forEach(function (r) { if (!r.saldo) movDays[r.dd + '/' + r.mm] = 1; });
     result.rows.forEach(function (r) {
-      if (r.saldo) r.saldoAt = /anterior/i.test(r.desc) && movDays[r.dd + '/' + r.mm] ? 'start' : 'end';
+      if (r.saldo && !r.saldoAt) r.saldoAt = /anterior/i.test(r.desc) && movDays[r.dd + '/' + r.mm] ? 'start' : 'end';
     });
     return result;
   }
