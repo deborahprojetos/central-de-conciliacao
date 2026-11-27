@@ -5,7 +5,7 @@
 body { margin: 0; color: var(--ex-ink); background: #f3f6fb; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 .ex-top { padding: 22px 28px 0; }
 .ex-top h1 { margin: 0; color: var(--ex-navy); font-size: 30px; letter-spacing: -.03em; }
-.ex-main { width: min(1280px, 100%); margin: 0 auto; padding: 18px 28px 40px; }
+main.ex-main { width: 100% !important; margin: 0 !important; padding: 18px 0 40px; }
 .ex-card { margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--ex-line); border-radius: 16px; background: #fff; }
 .ex-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .ex-card-head h2 { margin: 0; color: var(--ex-navy); font-size: 16px; }
@@ -77,7 +77,7 @@ body { margin: 0; color: var(--ex-ink); background: #f3f6fb; font-family: Inter,
 
 @media (max-width: 640px) {
   .ex-top { padding: 16px 14px 0; }
-  .ex-main { padding: 14px 14px 30px; }
+  .ex-main { padding: 14px 0 30px; }
   .ex-counts { margin-left: 0; }
   .ex-foot { flex-direction: column; align-items: flex-start; }
 }
@@ -93,6 +93,7 @@ body { margin: 0; color: var(--ex-ink); background: #f3f6fb; font-family: Inter,
 .fd-status { margin-top: 3px; color: var(--ex-muted); font-size: 12.5px; }
 .fd-status.is-error { color: var(--ex-neg); font-weight: 600; }
 .fd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.monthly-toolbar { margin-top: 14px; margin-bottom: 0; }
 .ex-quiet { color: var(--ex-muted); }
 .fd-card.is-unsupported .fd-status { color: var(--ex-muted); }
 .fd-pending { margin: 14px 0 0; padding: 0; list-style: none; }

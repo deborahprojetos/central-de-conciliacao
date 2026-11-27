@@ -738,11 +738,12 @@
   function init() {
     var active = ACTIVE;
     buildSidebar(active);
-    buildCompanyBar();
+    var hasOwnCompanyFilter = !!document.querySelector('main[data-company-filter]');
+    if (!hasOwnCompanyFilter) buildCompanyBar();
     refreshCompanyUI();
     startCapture(active);
     setupDropZones();
-    if (!COMPANY) openCompanyModal();
+    if (!COMPANY && !hasOwnCompanyFilter) openCompanyModal();
     try {
       var msg = sessionStorage.getItem('cf:toast');
       if (msg) { sessionStorage.removeItem('cf:toast'); setTimeout(function () { toast(msg); }, 300); }

@@ -11,15 +11,18 @@
   var STATUSES = ['Pendente', 'Em análise'];
 
   var company = Shell ? Shell.company() : null;
-  var KEY = company ? 'cf:extrato:' + company : null;
   var state = load();
-  (function migrateFilters() {
+  var manualState = state;
+  var folderView = null;
+  function migrateFilters() {
     var ui = state.ui || (state.ui = {});
     if (ui.status) { ui.cf = ui.cf || {}; ui.cf.status = [ui.status === '-' ? '(Sem status)' : ui.status]; }
     if (ui.resp) { ui.cf = ui.cf || {}; ui.cf.resp = [ui.resp === '-' ? '(Vazias)' : ui.resp]; }
     delete ui.status; delete ui.resp;
-  })();
+  }
+  migrateFilters();
   var pending = null; // extrato lido e ainda não salvo
+  var importRequest = 0;
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -41,7 +44,13 @@
     catch (e) { message('Não foi possível salvar: o armazenamento do navegador está cheio.', 'error'); return false; }
   }
   function load() { return loadFor(company); }
-  function save() { saveFor(company, state); }
+  function save() {
+    if (!folderView) return saveFor(company, state);
+    var mo = current();
+    try {
+      localStorage.setItem(folderView.key, JSON.stringify({ marks: mo.marks, sum: mo.sum, ui: state.ui }));
+    } catch (e) { message('Não foi possível salvar a conferência neste navegador.', 'error'); }
+  }
   function message(text, kind) {
     var el = $('importMsg');
     el.hidden = !text; el.textContent = text || '';
@@ -59,15 +68,20 @@
   async function readPdf(file) {
     if (!window.pdfjsLib) throw new Error('O leitor de PDF não carregou. Verifique a conexão e tente de novo.');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    var pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    var task = pdfjsLib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false });
     var items = [];
-    for (var p = 1; p <= pdf.numPages; p++) {
-      var page = await pdf.getPage(p);
-      var content = await page.getTextContent();
-      content.items.forEach(function (it) {
-        if (!it.str || !it.str.trim()) return;
-        items.push({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, page: p });
-      });
+    try {
+      var pdf = await task.promise;
+      for (var p = 1; p <= pdf.numPages; p++) {
+        var page = await pdf.getPage(p);
+        var content = await page.getTextContent();
+        content.items.forEach(function (it) {
+          if (!it.str || !it.str.trim()) return;
+          items.push({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, page: p });
+        });
+      }
+    } finally {
+      await task.destroy();
     }
     return items;
   }
@@ -92,13 +106,15 @@
     if (maxR >= 0) ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
   }
   // Lê PDF ou Excel e devolve { columns, rows, period, account }.
-  async function readAny(file) {
+  async function readAny(file, bank) {
     var kind = fileKind(file.name);
     if (kind === 'pdf') {
       var items = await readPdf(file);
       if (!items.length) throw new Error('PDF sem texto selecionável (imagem).');
-      var p = Core.parseStatement(items);
-      p.account = Core.findAccount(items.filter(function (it) { return it.page === 1; }));
+      var p = Core.parseStatement(items, bank);
+      var firstPage = items.filter(function (it) { return it.page === 1; });
+      p.account = Core.findAccount(firstPage);
+      p.accountBase = Core.findAccount(firstPage, true);
       return p;
     }
     if (kind === 'sheet') {
@@ -282,12 +298,14 @@
 
   async function handleFile(file) {
     if (!file) return;
-    if (!KEY) { message('Escolha a empresa antes de importar.', 'error'); return; }
+    if (!company) { message('Escolha a empresa antes de importar.', 'error'); return; }
+    var request = ++importRequest;
     $('fileName').textContent = file.name;
     message('Lendo ' + file.name + '…');
     $('preview').hidden = true; pending = null;
     try {
       var parsed = await readAny(file);
+      if (request !== importRequest) return;
       if (!parsed.rows.length) throw new Error('Nenhum lançamento com data e valor foi encontrado neste arquivo.');
       pending = { fileName: file.name, parsed: parsed };
       var period = parsed.period || new Date().toISOString().slice(0, 7);
@@ -298,26 +316,27 @@
       $('preview').hidden = false;
       message('');
     } catch (err) {
-      message(err && err.message ? err.message : 'Não foi possível ler o PDF.', 'error');
+      if (request === importRequest) message(err && err.message ? err.message : 'Não foi possível ler o PDF.', 'error');
     } finally {
-      $('pdfFile').value = '';
+      if (request === importRequest) $('pdfFile').value = '';
     }
   }
   function updateSaveLabel() {
     var m = $('previewMonth').value;
-    $('saveImport').textContent = state.months[m] ? 'Atualizar ' + monthLabel(m) : 'Salvar extrato';
+    $('saveImport').textContent = manualState.months[m] ? 'Atualizar ' + monthLabel(m) : 'Salvar extrato';
   }
   function commitImport() {
     if (!pending) return;
     var m = $('previewMonth').value;
     if (!/^\d{4}-\d{2}$/.test(m)) { message('Informe o mês do extrato.', 'error'); return; }
-    var res = mergeImport(state, m, pending.fileName, pending.parsed, '', pending.fileName, { force: pending.force });
+    var res = mergeImport(manualState, m, pending.fileName, pending.parsed, '', pending.fileName, { force: pending.force });
     if (res.duplicate) { message('Não importado: mesmo conteúdo de ' + res.duplicate + '.', 'error'); return; }
     if (res.conflict) {
       if (!window.confirm(res.overlap + ' lançamentos deste arquivo já estão em ' + res.conflict + '. Importar mesmo assim?')) return;
       pending.force = true; commitImport(); return;
     }
     var old = res.existed, keptMarks = res.kept;
+    showFolderStatement(null);
     state.lastMonth = m;
     state.ui.day = '';
     save();
@@ -401,6 +420,10 @@
   // Movimentos nunca incluem linhas de saldo.
   function sumBase(rows) { return rows.filter(function (r) { return !r.saldo; }); }
   function dayNum(d) { return Number(String(d).slice(0, 2)); }
+  function statementDay(date) {
+    var parts = date.split('/');
+    return Date.UTC(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])) / 86400000;
+  }
 
   // Saldo de cada conta no fim de um dia = saldo de referência do banco + movimentos entre os dias.
   // dia vazio = período inteiro. Devolve { start, end, bank, diff, accounts }.
@@ -414,6 +437,7 @@
     var bySrc = {};
     mo.rows.forEach(function (r) { (bySrc[r.src || ''] = bySrc[r.src || ''] || []).push(r); });
     var out = { start: 0, end: 0, ok: true, gaps: [], accounts: 0, parts: [] };
+    var rowDay = folderView ? function (r) { return statementDay(r.date); } : function (r) { return dayNum(r.day); };
     var r2 = function (v) { return Math.round(v * 100) / 100; };
     Object.keys(bySrc).forEach(function (k) {
       var rows = bySrc[k];
@@ -422,13 +446,14 @@
       rows.forEach(function (r) {
         if (r.saldo) return;
         var v = moveCols.reduce(function (s, c) { return s + (typeof r.values[c] === 'number' ? r.values[c] : 0); }, 0);
-        mov[dayNum(r.day)] = (mov[dayNum(r.day)] || 0) + v;
+        var d = rowDay(r);
+        mov[d] = (mov[d] || 0) + v;
       });
       // Saldo no fim de cada dia, segundo o banco.
       var ref = {};
       rows.forEach(function (r) {
         if (!r.saldo || sval(r) === null) return;
-        var d = dayNum(r.day);
+        var d = rowDay(r);
         var at = r.saldoAt || (/anterior/i.test(r.desc) && mov[d] ? 'start' : 'end');
         if (at === 'start') { if (ref[d - 1] === undefined) ref[d - 1] = sval(r); }
         else if (/anterior/i.test(r.desc)) { if (ref[d] === undefined) ref[d] = sval(r); }
@@ -452,7 +477,8 @@
       var allDays = movDays.concat(refDays);
       var lastDay = Math.max.apply(null, allDays);
       var firstMov = movDays.length ? Math.min.apply(null, movDays) : refDays[0] + 1;
-      var d = day ? dayNum(day) : lastDay;
+      var selected = day && rows.find(function (r) { return r.day === day && !r.saldo; });
+      var d = day && !folderView ? dayNum(day) : (selected ? rowDay(selected) : lastDay);
       var start = day ? endOf(d - 1) : endOf(firstMov - 1);
       var srcInfo = (mo.sources || {})[k] || {};
       out.parts.push({ label: srcInfo.account ? 'conta ' + srcInfo.account : (srcInfo.label || 'conta'), end: endOf(d) });
@@ -472,11 +498,12 @@
   }
 
   function render() {
-    var months = Object.keys(state.months).sort().reverse();
+    var months = Object.keys(manualState.months).sort().reverse();
     $('monthField').hidden = !months.length;
-    $('monthSelect').innerHTML = months.map(function (m) {
-      return '<option value="' + m + '"' + (m === state.lastMonth ? ' selected' : '') + '>' + esc(monthLabel(m)) + '</option>';
+    $('monthSelect').innerHTML = (folderView ? '<option value="" disabled selected>Extrato da pasta</option>' : '') + months.map(function (m) {
+      return '<option value="' + m + '"' + (!folderView && m === state.lastMonth ? ' selected' : '') + '>' + esc(monthLabel(m)) + '</option>';
     }).join('');
+    $('deleteMonth').hidden = !!folderView;
     var mo = current();
     $('workArea').hidden = !mo;
     if (!mo) return;
@@ -501,12 +528,14 @@
     var monthBase = sumBase(mo.rows), visBase = sumBase(visibleRows(mo));
     var filtered = !!(state.ui.day || state.ui.type || activeCf().length || $('search').value.trim());
     var chosen = opts.filter(function (o) { return sel.indexOf(o.key) !== -1; });
-    var scope = state.ui.day ? 'dia ' + state.ui.day : monthLabel(state.lastMonth);
+    var scope = state.ui.day ? 'dia ' + state.ui.day : (folderView ? 'Período do extrato' : monthLabel(state.lastMonth));
     var cards = '';
     var bal = balances(mo, state.ui.day || '');
     if (bal) {
       var mmTxt = state.lastMonth ? '/' + state.lastMonth.slice(5) : '';
-      var dd = function (n) { return String(n).padStart(2, '0') + mmTxt; };
+      var dd = folderView ? function (n) {
+        return new Date(n * 86400000).toISOString().slice(0, 10).split('-').reverse().join('/');
+      } : function (n) { return String(n).padStart(2, '0') + mmTxt; };
       var check = bal.ok
         ? '<small class="is-ok">Confere com o saldo do banco</small>'
         : '<small class="is-warn">Não fecha ' + bal.gaps.map(function (g) { return 'de ' + dd(g.from) + ' a ' + dd(g.to) + ' (' + brl.format(g.diff) + ')'; }).join('; ') + ': falta lançamento ou arquivo</small>';
@@ -517,7 +546,7 @@
     cards += chosen.map(function (o) {
       var total = Core.applySum(o, visBase);
       return '<div class="ex-total"><span>' + esc(o.label) + '</span><strong class="' + (total < 0 ? 'is-neg' : '') + '">' + brl.format(total) + '</strong>' +
-        '<small>' + (filtered ? 'Seleção · mês: ' + brl.format(Core.applySum(o, monthBase)) : esc(scope)) + '</small></div>';
+        '<small>' + (filtered ? 'Total do período: ' + brl.format(Core.applySum(o, monthBase)) : esc(scope)) + '</small></div>';
     }).join('');
     $('sumTotals').innerHTML = cards || '<div class="ex-total ex-total-empty"><span>Nenhum campo selecionado</span></div>';
 
@@ -687,7 +716,11 @@
   $('previewMonth').addEventListener('input', updateSaveLabel);
   $('saveImport').addEventListener('click', commitImport);
   $('cancelImport').addEventListener('click', function () { pending = null; $('preview').hidden = true; $('fileName').textContent = 'Nenhum arquivo selecionado'; });
-  $('monthSelect').addEventListener('change', function (e) { state.lastMonth = e.target.value; state.ui.day = ''; message(''); save(); render(); });
+  $('monthSelect').addEventListener('change', function (e) {
+    var month = e.target.value;
+    showFolderStatement(null);
+    state.lastMonth = month; state.ui.day = ''; message(''); save(); render();
+  });
   $('daySelect').addEventListener('change', function (e) { state.ui.day = e.target.value; save(); render(); });
   $('typeFilter').addEventListener('change', function (e) { state.ui.type = e.target.value; save(); render(); });
   $('clearCf').addEventListener('click', function () { state.ui.cf = {}; state.ui.sort = null; save(); closePop(); render(); });
@@ -744,14 +777,19 @@
       updateRespOptions(current());
     }
   });
-  var respTimer = null;
+  var respTimer = null, saveResponsibility = null;
   $('tbody').addEventListener('input', function (e) {
     if (!e.target.classList.contains('ex-resp')) return;
     var tr = e.target.closest('tr[data-id]'), val = e.target.value;
     clearTimeout(respTimer);
-    respTimer = setTimeout(function () { setMark(tr.getAttribute('data-id'), { resp: val.trim() }); }, 500);
+    saveResponsibility = function () {
+      setMark(tr.getAttribute('data-id'), { resp: val.trim() });
+      saveResponsibility = null;
+    };
+    respTimer = setTimeout(saveResponsibility, 500);
   });
   $('deleteMonth').addEventListener('click', function () {
+    if (folderView) return;
     var m = state.lastMonth; if (!m) return;
     if (!window.confirm('Excluir ' + monthLabel(m) + ' desta empresa, com os status e responsáveis marcados?')) return;
     delete state.months[m];
@@ -759,18 +797,68 @@
     save(); render();
   });
 
+  function flushResponsibility() {
+    clearTimeout(respTimer);
+    if (saveResponsibility) saveResponsibility();
+  }
+
+  function showFolderStatement(statement) {
+    if (!statement && !folderView) return;
+    if (statement && folderView && statement.key === folderView.key && statement.parsed === folderView.parsed) return;
+    flushResponsibility();
+    closePop();
+    lastClick = null;
+    $('search').value = '';
+    folderView = statement;
+    state = manualState;
+    if (statement) {
+      var parsed = statement.parsed, saved = {};
+      try { saved = JSON.parse(localStorage.getItem(statement.key) || '{}'); } catch (e) {}
+      var period = parsed.period;
+      state = { months: {}, lastMonth: period, ui: saved.ui || {} };
+      state.months[period] = {
+        fileName: statement.name,
+        columns: parsed.columns,
+        rows: parsed.rows.map(function (row) {
+          return Object.assign({}, row, { day: row.dd + '/' + row.mm });
+        }),
+        marks: saved.marks || {},
+        sum: saved.sum
+      };
+    }
+    render();
+  }
+
   window.ExtratoApp = {
     fileKind: fileKind, readAny: readAny, monthLabel: monthLabel,
     importInto: function (co, m, fileName, parsed, src, label, opts) {
-      var st = co === company ? state : loadFor(co);
+      var st = co === company ? manualState : loadFor(co);
       var res = mergeImport(st, m, fileName, parsed, src, label, opts);
       if (res.duplicate || res.conflict) return res;
-      if (co === company && !state.lastMonth) state.lastMonth = m;
+      if (co === company && !st.lastMonth) st.lastMonth = m;
       saveFor(co, st);
       if (co === company) render();
       return res;
     },
-    reload: function () { state = load(); render(); },
+    reload: function () { manualState = load(); if (!folderView) state = manualState; render(); },
+    showFolderStatement: showFolderStatement,
+    selectCompany: function (id) {
+      if (id === company) return;
+      flushResponsibility();
+      importRequest++;
+      pending = null;
+      $('preview').hidden = true;
+      $('pdfFile').value = '';
+      $('fileName').textContent = 'Nenhum arquivo selecionado';
+      $('search').value = '';
+      closePop();
+      message('');
+      company = id;
+      folderView = null;
+      manualState = state = load();
+      migrateFilters();
+      render();
+    },
     company: function () { return company; }
   };
 

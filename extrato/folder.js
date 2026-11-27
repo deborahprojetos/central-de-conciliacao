@@ -445,6 +445,9 @@
   }
 
   // Para testes e integração.
-  window.ExtratoFolder = { _setDir: function (h) { dir = h; granted = true; renderBox(); return scan(false); }, scan: scan };
+  window.ExtratoFolder = {
+    _setDir: function (h) { dir = h; granted = true; renderBox(); return scan(false); },
+    scan: scan, getSavedHandle: idbGet, saveHandle: idbSet
+  };
   init();
 })();

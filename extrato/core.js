@@ -120,9 +120,91 @@
     return (h >>> 0).toString(36);
   }
 
-  function parseStatement(items) {
+  function parseSicoob(lines) {
+    var texts = lines.map(function (line) {
+      return line.tokens.map(function (token) { return token.t; }).join(' ');
+    });
+    var start = texts.findIndex(function (text) { return /^hist[oó]rico de movimenta[cç][aã]o$/i.test(text); });
+    if (start === -1) return null;
+    var headerIndex = texts.findIndex(function (text, i) {
+      return i > start && /^data\s+documento\s+hist[oó]rico\s+valor(?:\s|$)/i.test(text);
+    });
+    if (headerIndex === -1) return null;
+
+    var periodHeader = texts.slice(0, start).join('\n').match(/per[ií]odo\s*:\s*(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    var end = texts.findIndex(function (text, i) {
+      return i > headerIndex && /^(?:resumo|encargos|outras informa[cç][oõ]es|informa[cç][oõ]es)(?:\s|$)/i.test(text);
+    });
+    var historyX = lines[headerIndex].tokens[2].x0;
+    var rows = [], current = null, date = null, seen = Object.create(null);
+    var amountPattern = /^([+-]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})\s*([CD])?\s*\*?$/i;
+    lines.slice(headerIndex + 1, end === -1 ? lines.length : end).forEach(function (line) {
+      var tokens = line.tokens;
+      var dated = DATE.exec(tokens[0].t);
+      var amountAt = tokens.findIndex(function (token) { return token.t === 'R$'; });
+      if (dated) { date = dated; current = null; }
+      var amountText = amountAt === -1 ? '' : tokens.slice(amountAt + 1).map(function (token) { return token.t; }).join(' ');
+      var amount = amountPattern.exec(amountText);
+      var history = tokens.slice(dated ? 1 : 0, amountAt === -1 ? tokens.length : amountAt)
+        .filter(function (token) { return token.x0 >= historyX - 3; })
+        .map(function (token) { return token.t; }).join(' ');
+      if (!amount) {
+        if (!dated && current && history && tokens[0].x0 >= historyX - 3) {
+          current.hist += ' ' + history;
+          current.desc = current.hist;
+        }
+        return;
+      }
+      current = null;
+      if (!date || !history || /^saldo\s+bloqu/i.test(history)) return;
+      var saldo = /^saldo\s+(?:anterior|do dia)\b/i.test(history);
+      var value = parseMoney(amount[1]);
+      var values = {};
+      values[saldo ? 'c1' : 'c0'] = /^d$/i.test(amount[2] || '') ? -Math.abs(value) : value;
+      var yyyy = date[3] && (date[3].length === 2 ? '20' + date[3] : date[3]);
+      if (!yyyy && periodHeader) {
+        var afterEnd = date[2] + date[1] > periodHeader[5] + periodHeader[4];
+        yyyy = afterEnd ? String(Number(periodHeader[6]) - 1) : periodHeader[6];
+      }
+      current = { dd: date[1], mm: date[2], yyyy: yyyy, hist: history, desc: history, values: values, saldo: saldo };
+      rows.push(current);
+    });
+    var period = periodHeader ? periodHeader[6] + '-' + periodHeader[5] : guessPeriod(lines, rows);
+    rows.forEach(function (row) {
+      var year = row.yyyy || period.slice(0, 4);
+      row.date = row.dd + '/' + row.mm + (year ? '/' + year : '');
+      var signature = row.date + '|' + row.desc + '|' + JSON.stringify(row.values);
+      seen[signature] = (seen[signature] || 0) + 1;
+      row.id = hash(signature + '#' + seen[signature]);
+    });
+    return markSaldoAt({ columns: [
+      { id: 'c0', name: 'Valor', saldo: false },
+      { id: 'c1', name: 'Saldo', saldo: true }
+    ], rows: rows, period: period });
+  }
+
+  function parseStatement(items, bank) {
     var lines = groupLines(tokenize(items));
+    if (/^sicoob/.test(bank || '') || items.some(function (item) { return /\bsicoob\b/i.test(item.str); })) {
+      var sicoob = parseSicoob(lines);
+      if (sicoob) return sicoob;
+    }
     lines.forEach(function (l) { l.cells = classify(l); });
+    var isBB = /^(?:bb|bancodobrasil)$/.test(bank || '') || lines.some(function (l) {
+      return /\bbanco do brasil\b/i.test(l.tokens.map(function (t) { return t.t; }).join(' '));
+    });
+    var isBradesco = /^(?:banco)?bradesco$/.test(bank || '') || (!bank && lines.some(function (l) {
+      return l.page === 1 && /^(?:banco\s+)?bradesco(?:\s+(?:s\.?a\.?|net empresa|internet banking))?$/i.test(
+        l.tokens.map(function (t) { return t.t; }).join(' '));
+    }));
+    var closingLine = (isBB || isBradesco) ? lines.find(function (l) {
+      var label = l.cells.filter(function (c) { return c.kind === 'text'; })
+        .map(function (c) { return c.t; }).join(' ');
+      var closingLabel = isBradesco ? /^total\s*:?$/i : /^(?:\d+\s+)*s\s*a\s*l\s*d\s*o$/i;
+      return closingLabel.test(label) &&
+        l.cells.some(function (c) { return c.kind === 'money'; });
+    }) : null;
+    if (closingLine) lines = lines.slice(0, lines.indexOf(closingLine) + 1);
 
     // 1) Linhas candidatas: têm valor e (data na linha ou data anterior).
     var seenDate = false;
@@ -136,29 +218,54 @@
     var edges = [];
     lines.forEach(function (l) { if (l.candidate) l.cells.forEach(function (c) { if (c.kind === 'money') edges.push(c.x1); }); });
     var candidateCount = lines.filter(function (l) { return l.candidate; }).length;
+    var firstRowLine = lines.find(function (l) { return l.candidate; });
+    if (!firstRowLine) return { columns: [], rows: [], period: '', lineCount: lines.length };
+    var explicitHeader = null, explicitColumns = [];
+    lines.forEach(function (l) {
+      if (l.page !== firstRowLine.page || l.y < firstRowLine.y ||
+          !l.cells.some(function (c) { return /^data$/i.test(c.t); })) return;
+      var headers = [];
+      l.cells.forEach(function (c, i) {
+        if (!(isBradesco ? /^(valor|cr[eé]dito|d[eé]bito|saldo)$/i : /^(valor|saldo)$/i).test(c.t)) return;
+        var currency = l.cells[i + 1];
+        var right = currency && /^\(?R\$\)?$/i.test(currency.t) && currency.x0 - c.x1 < 10 ? currency.x1 : c.x1;
+        headers.push({ name: c.t, x: right, min: c.x0 });
+      });
+      var layout = headers.map(function (header) {
+        return header.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      }).join(' ');
+      if (layout === 'valor saldo' || (isBradesco && layout === 'credito debito saldo')) {
+        explicitHeader = l;
+        explicitColumns = headers;
+      }
+    });
     var minCount = Math.max(2, Math.floor(candidateCount * 0.04));
-    var cols = clusterEdges(edges, 14).filter(function (g) { return g.count >= minCount; }).sort(function (a, b) { return a.x - b.x; });
+    var closingAmounts = closingLine ? closingLine.cells.filter(function (c) { return c.kind === 'money'; }) : [];
+    var closingValue = isBradesco ? (closingAmounts.length === 3 ? closingAmounts[2] : null) : closingAmounts[0];
+    var cols = explicitHeader ? explicitColumns : clusterEdges(edges, 14).filter(function (g) {
+      return g.count >= minCount || (closingValue && candidateCount >= 2 && (candidateCount <= 3 || Math.abs(closingValue.x1 - g.x) <= 14));
+    });
+    if (!cols.length && closingValue) cols = clusterEdges(edges, 14);
     if (!cols.length) return { columns: [], rows: [], period: '', lineCount: lines.length };
 
     function colOf(cell) {
       var best = -1, dist = 1e9;
       cols.forEach(function (g, i) { var d = Math.abs(cell.x1 - g.x); if (d < dist) { dist = d; best = i; } });
-      return dist <= 22 ? best : -1;
+      return dist <= (explicitHeader ? 28 : 22) ? best : -1;
     }
 
     // 3) Nomes das colunas pelo cabeçalho.
-    var names = cols.map(function () { return ''; });
-    var firstRowLine = lines.filter(function (l) { return l.candidate; })[0];
-    var headerLine = null, headerScore = 0;
+    var names = cols.map(function (g) { return g.name || ''; });
+    var headerLine = explicitHeader, headerScore = 0;
     lines.forEach(function (l) {
-      if (l.candidate || l.page !== firstRowLine.page || l.y < firstRowLine.y) return;
+      if (explicitHeader || l.candidate || l.page !== firstRowLine.page || l.y < firstRowLine.y) return;
       var score = 0;
       cols.forEach(function (g) {
         if (l.cells.some(function (c) { return c.kind === 'text' && /[a-zà-ú]/i.test(c.t) && c.x1 >= g.min - 70 && c.x0 <= g.max + 10; })) score++;
       });
       if (score > headerScore || (score === headerScore && headerLine && l.y < headerLine.y && score)) { headerScore = score; headerLine = l; }
     });
-    if (headerLine) {
+    if (headerLine && !explicitHeader) {
       var prevRight = -1e9;
       cols.forEach(function (g, i) {
         var words = headerLine.cells.filter(function (c) {
@@ -174,13 +281,15 @@
       name = name.replace(/\s*R\$$/, '').trim() || name;
       if (used[name]) name += ' ' + (i + 1);
       used[name] = 1;
-      return { id: 'c' + i, name: name, saldo: /saldo/i.test(name) };
+      var saldo = closingValue && (!isBradesco || !names.some(function (label) { return /saldo/i.test(label); }))
+        ? i === colOf(closingValue) : /saldo/i.test(name);
+      return { id: 'c' + i, name: saldo && closingValue ? 'Saldo' : name, saldo: saldo };
     });
 
     // 4) Colunas de texto pelo cabeçalho (Lançamentos, Razão Social, CNPJ/CPF...).
     var textCols = [];
     if (headerLine) {
-      var moneyLeft = Math.min.apply(null, cols.map(function (g) { return g.min; })) - 75;
+      var moneyLeft = explicitHeader ? cols[0].min : Math.min.apply(null, cols.map(function (g) { return g.min; })) - 75;
       var words = headerLine.cells.filter(function (c) { return c.kind === 'text' && c.x1 < moneyLeft; });
       words.forEach(function (w) {
         var last = textCols[textCols.length - 1];
@@ -217,12 +326,17 @@
         if (c === dateCell) return;
         if (c.kind === 'money') {
           var ci = colOf(c);
-          if (ci >= 0 && values['c' + ci] === undefined) { values['c' + ci] = c.v; nValues++; return; }
+          if (ci >= 0 && values['c' + ci] === undefined) {
+            if (!isBradesco || l !== closingLine || columns[ci].saldo) {
+              values['c' + ci] = c.v; nValues++;
+            }
+            return;
+          }
         }
         texts.push({ c: c, y: l.y });
       });
       if (l.candidate && nValues && lastDate) {
-        var row = { dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy, values: values, page: l.page, y: l.y, parts: texts };
+        var row = { dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy, values: values, page: l.page, y: l.y, parts: texts, closing: l === closingLine };
         rows.push(row); rowLines.push(li);
       } else {
         l.loose = texts;
@@ -249,7 +363,8 @@
       r.hist = j(f.hist); r.party = j(f.party); r.taxId = j(f.taxId); r.origin = j(f.origin);
       r.desc = [r.hist, r.party].filter(Boolean).join(' · ');
       r.extra = [r.origin ? 'Ag/origem ' + r.origin : '', r.taxId ? 'CPF/CNPJ ' + r.taxId : ''].filter(Boolean).join(' · ');
-      r.saldo = /\bsaldo\b/i.test(r.desc);
+      r.saldo = r.closing || /\bsaldo\b/i.test(r.desc);
+      delete r.closing;
       var sig = r.dd + '/' + r.mm + '|' + r.desc + '|' + JSON.stringify(r.values);
       occ[sig] = (occ[sig] || 0) + 1;
       r.id = hash(sig + '#' + occ[sig]);
@@ -429,12 +544,14 @@
   }
 
   // Agência e conta no cabeçalho do PDF (para identificar a empresa).
-  function findAccount(items) {
+  function findAccount(items, omitCheckDigit) {
     var text = items.map(function (it) { return it.str; }).join(' ').replace(/\s+/g, ' ');
-    var ag = /ag[eê]ncia\s*[:.\-]?\s*(\d{3,5})/i.exec(text) || /\bag\.?\s*[:\-]?\s*(\d{3,5})\b/i.exec(text);
+    var ag = /ag[eê]ncia\s*[:.\-]?\s*(\d{3,5})/i.exec(text) || /\bag\.?\s*[:\-]?\s*(\d{3,5})\b/i.exec(text)
+      || (/\bsicoob\b/i.test(text) && /\bcooperativa\s*:\s*(\d{3,5})\b/i.exec(text));
     var cc = /conta(?:\s+corrente)?\s*[:.\-]?\s*(\d[\d.\-]{3,15}\d)/i.exec(text) || /\bc\/?c\.?\s*[:\-]?\s*(\d[\d.\-]{3,15}\d)/i.exec(text);
     if (!ag || !cc) return '';
-    return ag[1] + '/' + cc[1].replace(/\D/g, '');
+    var number = omitCheckDigit ? cc[1].replace(/-\d$/, '') : cc[1];
+    return ag[1] + '/' + number.replace(/\D/g, '');
   }
 
   // Coluna Débito/Saída é sempre saída (negativo); Crédito/Entrada é sempre entrada (positivo).
