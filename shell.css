@@ -16,7 +16,7 @@ html.cf-shell body { padding-left: var(--cf-side) !important; margin: 0; transit
 
 /* O link "← Central" das aplicações passa a ser o menu lateral. */
 html.cf-shell .central-nav { display: none !important; }
-html.cf-shell .topbar, html.cf-shell body > header { padding-left: 28px !important; padding-right: 28px !important; }
+html.cf-shell .topbar, html.cf-shell body > header { padding-left: 16px !important; padding-right: 16px !important; }
 
 .cf-sidebar {
   position: fixed; inset: 0 auto 0 0; z-index: 60; width: var(--cf-side);
