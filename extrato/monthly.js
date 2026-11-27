@@ -156,7 +156,7 @@
       const bankId = Shell.slug(entry.bank);
       const parserVersion = /^(?:bb|bancodobrasil)$/.test(bankId) ? 3
         : bankId.startsWith('sicoob') ? 4 : /^(?:banco)?bradesco$/.test(bankId) ? 5
-          : /^(?:banco)?santander/.test(bankId) ? 6 : 2;
+          : /^(?:banco)?santander/.test(bankId) ? 7 : 2;
       entry.reused = cached?.version === parserVersion && cached.signature === signature && Boolean(cached.parsed);
       entry.parsed = entry.reused ? cached.parsed : await App.readAny(entry.original, bankId);
       if (!entry.parsed.rows.length) throw new Error('Nenhum lançamento ou saldo reconhecido.');

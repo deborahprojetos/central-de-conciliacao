@@ -183,6 +183,48 @@
     ], rows: rows, period: period });
   }
 
+  function findSantanderBalances(lines) {
+    // As fontes do Santander podem separar letras, moeda e dígitos em itens do PDF.
+    var balancePattern = /^(\d{2}\/\d{2}(?:\/\d{4}|\/\d{2})?)?(saldododiac\.?c\.?|saldoanterior(?:c\.?c\.?)?):?(-?)(?:R\$)?(-?\d[\d.]*,\d{2})$/i;
+    var daily = false, matches = [], consumed = new Set();
+    function compact(items) {
+      return items.map(function (item) { return item.t; }).join('').replace(/[\u00ad\u200b\u200e\u200f]/g, '').replace(/−/g, '-');
+    }
+    lines.forEach(function (line, index) {
+      if (consumed.has(line)) return;
+      var tokens = line.tokens;
+      var match = balancePattern.exec(compact(tokens));
+      if (!match) {
+        var nearby = lines.slice(Math.max(0, index - 2), index + 3).filter(function (other) {
+          return other.page === line.page && Math.abs(other.y - line.y) <= 7 && !consumed.has(other);
+        });
+        if (nearby.length < 2) return;
+        tokens = nearby.flatMap(function (other) { return other.tokens; }).sort(function (a, b) { return a.x0 - b.x0; });
+        match = balancePattern.exec(compact(tokens));
+        if (!match) return;
+        nearby.forEach(function (other) { if (other !== line) consumed.add(other); });
+      }
+
+      var isDaily = /^saldododia/i.test(match[2]);
+      var first = tokens[0], last = tokens[tokens.length - 1];
+      var cells = match[1] ? [{ kind: 'date', t: match[1], x0: first.x0, x1: first.x1 }] : [];
+      cells.push(
+        { kind: 'text', t: isDaily ? 'Saldo do dia Cc' : 'Saldo anterior', x0: first.x0, x1: first.x1 },
+        { kind: 'money', t: match[4], v: parseMoney(match[3] + match[4]), x0: last.x0, x1: last.x1 }
+      );
+      matches.push({ line: line, tokens: tokens, cells: cells, isDaily: isDaily });
+      daily = daily || isDaily;
+    });
+    if (!daily) return null;
+    matches.forEach(function (match) {
+      match.line.tokens = match.tokens;
+      match.line.cells = match.cells;
+      match.line.santanderDailyBalance = match.isDaily;
+      match.line.santanderBalance = true;
+    });
+    return lines.filter(function (line) { return !consumed.has(line); });
+  }
+
   function parseStatement(items, bank) {
     var lines = groupLines(tokenize(items));
     if (/^sicoob/.test(bank || '') || items.some(function (item) { return /\bsicoob\b/i.test(item.str); })) {
@@ -192,13 +234,8 @@
     lines.forEach(function (l) { l.cells = classify(l); });
     var santanderBalance = false;
     if (!bank || /^(?:banco)?santander/.test(bank)) {
-      lines.forEach(function (l) {
-        var label = l.cells.filter(function (c) { return c.kind === 'text'; })
-          .map(function (c) { return c.t; }).join(' ');
-        l.santanderDailyBalance = /^saldo do dia c\.?\s*c\.?$/i.test(label);
-        l.santanderBalance = l.santanderDailyBalance || /^saldo anterior(?: c\.?\s*c\.?)?$/i.test(label);
-        if (l.santanderDailyBalance && l.cells.some(function (c) { return c.kind === 'money'; })) santanderBalance = true;
-      });
+      var santander = findSantanderBalances(lines);
+      if (santander) { lines = santander; santanderBalance = true; }
     }
     var isBB = /^(?:bb|bancodobrasil)$/.test(bank || '') || lines.some(function (l) {
       return /\bbanco do brasil\b/i.test(l.tokens.map(function (t) { return t.t; }).join(' '));
