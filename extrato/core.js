@@ -136,29 +136,46 @@
     var edges = [];
     lines.forEach(function (l) { if (l.candidate) l.cells.forEach(function (c) { if (c.kind === 'money') edges.push(c.x1); }); });
     var candidateCount = lines.filter(function (l) { return l.candidate; }).length;
+    var firstRowLine = lines.find(function (l) { return l.candidate; });
+    if (!firstRowLine) return { columns: [], rows: [], period: '', lineCount: lines.length };
+    var explicitHeader = null, explicitColumns = [];
+    lines.forEach(function (l) {
+      if (l.page !== firstRowLine.page || l.y < firstRowLine.y ||
+          !l.cells.some(function (c) { return /^data$/i.test(c.t); })) return;
+      var headers = [];
+      l.cells.forEach(function (c, i) {
+        if (!/^(valor|saldo)$/i.test(c.t)) return;
+        var currency = l.cells[i + 1];
+        var right = currency && /^\(?R\$\)?$/i.test(currency.t) && currency.x0 - c.x1 < 10 ? currency.x1 : c.x1;
+        headers.push({ name: c.t, x: right, min: c.x0 });
+      });
+      if (headers.length === 2 && /^valor$/i.test(headers[0].name) && /^saldo$/i.test(headers[1].name)) {
+        explicitHeader = l;
+        explicitColumns = headers;
+      }
+    });
     var minCount = Math.max(2, Math.floor(candidateCount * 0.04));
-    var cols = clusterEdges(edges, 14).filter(function (g) { return g.count >= minCount; }).sort(function (a, b) { return a.x - b.x; });
+    var cols = explicitHeader ? explicitColumns : clusterEdges(edges, 14).filter(function (g) { return g.count >= minCount; });
     if (!cols.length) return { columns: [], rows: [], period: '', lineCount: lines.length };
 
     function colOf(cell) {
       var best = -1, dist = 1e9;
       cols.forEach(function (g, i) { var d = Math.abs(cell.x1 - g.x); if (d < dist) { dist = d; best = i; } });
-      return dist <= 22 ? best : -1;
+      return dist <= (explicitHeader ? 28 : 22) ? best : -1;
     }
 
     // 3) Nomes das colunas pelo cabeçalho.
-    var names = cols.map(function () { return ''; });
-    var firstRowLine = lines.filter(function (l) { return l.candidate; })[0];
-    var headerLine = null, headerScore = 0;
+    var names = cols.map(function (g) { return g.name || ''; });
+    var headerLine = explicitHeader, headerScore = 0;
     lines.forEach(function (l) {
-      if (l.candidate || l.page !== firstRowLine.page || l.y < firstRowLine.y) return;
+      if (explicitHeader || l.candidate || l.page !== firstRowLine.page || l.y < firstRowLine.y) return;
       var score = 0;
       cols.forEach(function (g) {
         if (l.cells.some(function (c) { return c.kind === 'text' && /[a-zà-ú]/i.test(c.t) && c.x1 >= g.min - 70 && c.x0 <= g.max + 10; })) score++;
       });
       if (score > headerScore || (score === headerScore && headerLine && l.y < headerLine.y && score)) { headerScore = score; headerLine = l; }
     });
-    if (headerLine) {
+    if (headerLine && !explicitHeader) {
       var prevRight = -1e9;
       cols.forEach(function (g, i) {
         var words = headerLine.cells.filter(function (c) {
@@ -180,7 +197,7 @@
     // 4) Colunas de texto pelo cabeçalho (Lançamentos, Razão Social, CNPJ/CPF...).
     var textCols = [];
     if (headerLine) {
-      var moneyLeft = Math.min.apply(null, cols.map(function (g) { return g.min; })) - 75;
+      var moneyLeft = explicitHeader ? cols[0].min : Math.min.apply(null, cols.map(function (g) { return g.min; })) - 75;
       var words = headerLine.cells.filter(function (c) { return c.kind === 'text' && c.x1 < moneyLeft; });
       words.forEach(function (w) {
         var last = textCols[textCols.length - 1];

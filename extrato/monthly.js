@@ -15,7 +15,7 @@
   const open = $('monthlyOpen');
   const handleKey = 'extratos-dir-mensal';
   const foldersKey = 'extratos-pastas-mensais';
-  const parserVersion = 1;
+  const parserVersion = 2;
   const statementName = /^1\s+extrato(?:\s+(\d+(?:[.-]\d+)*))?\.pdf$/i;
   const dayName = /^(0[1-9]|[12]\d|3[01])[ ._-]+(0[1-9]|1[0-2])$/;
 
