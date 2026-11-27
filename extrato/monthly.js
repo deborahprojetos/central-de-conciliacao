@@ -15,7 +15,6 @@
   const open = $('monthlyOpen');
   const handleKey = 'extratos-dir-mensal';
   const foldersKey = 'extratos-pastas-mensais';
-  const parserVersion = 2;
   const statementName = /^1\s+extrato(?:\s+(\d+(?:[.-]\d+)*))?\.pdf$/i;
   const dayName = /^(0[1-9]|[12]\d|3[01])[ ._-]+(0[1-9]|1[0-2])$/;
 
@@ -154,8 +153,10 @@
       entry.signature = signature;
       const key = ['extrato-mensal', folderId, entry.path];
       const cached = cache.get(entry.path) || await stored(key);
+      const bankId = Shell.slug(entry.bank);
+      const parserVersion = /^(?:bb|bancodobrasil)$/.test(bankId) ? 3 : 2;
       entry.reused = cached?.version === parserVersion && cached.signature === signature && Boolean(cached.parsed);
-      entry.parsed = entry.reused ? cached.parsed : await App.readAny(entry.original);
+      entry.parsed = entry.reused ? cached.parsed : await App.readAny(entry.original, bankId);
       if (!entry.parsed.rows.length) throw new Error('Nenhum lançamento ou saldo reconhecido.');
       entry.version = parserVersion;
       if (!entry.reused) {
@@ -214,7 +215,7 @@
         await read(entry);
       }
       entries = next;
-      cache = new Map(statements.filter(entry => entry.version === parserVersion).map(entry => [entry.path, entry]));
+      cache = new Map(statements.filter(entry => entry.version).map(entry => [entry.path, entry]));
       const failures = next.filter(entry => entry.error || entry.warning).length;
       const available = statements.filter(entry => !entry.error);
       const reused = available.filter(entry => entry.reused).length;

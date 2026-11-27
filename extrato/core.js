@@ -120,9 +120,19 @@
     return (h >>> 0).toString(36);
   }
 
-  function parseStatement(items) {
+  function parseStatement(items, bank) {
     var lines = groupLines(tokenize(items));
     lines.forEach(function (l) { l.cells = classify(l); });
+    var isBB = /^(?:bb|bancodobrasil)$/.test(bank || '') || lines.some(function (l) {
+      return /\bbanco do brasil\b/i.test(l.tokens.map(function (t) { return t.t; }).join(' '));
+    });
+    var closingLine = isBB ? lines.find(function (l) {
+      var label = l.cells.filter(function (c) { return c.kind === 'text'; })
+        .map(function (c) { return c.t; }).join(' ');
+      return /^(?:\d+\s+)*s\s*a\s*l\s*d\s*o$/i.test(label) &&
+        l.cells.some(function (c) { return c.kind === 'money'; });
+    }) : null;
+    if (closingLine) lines = lines.slice(0, lines.indexOf(closingLine) + 1);
 
     // 1) Linhas candidatas: têm valor e (data na linha ou data anterior).
     var seenDate = false;
@@ -155,7 +165,11 @@
       }
     });
     var minCount = Math.max(2, Math.floor(candidateCount * 0.04));
-    var cols = explicitHeader ? explicitColumns : clusterEdges(edges, 14).filter(function (g) { return g.count >= minCount; });
+    var closingValue = closingLine && closingLine.cells.find(function (c) { return c.kind === 'money'; });
+    var cols = explicitHeader ? explicitColumns : clusterEdges(edges, 14).filter(function (g) {
+      return g.count >= minCount || (closingValue && candidateCount >= 2 && (candidateCount <= 3 || Math.abs(closingValue.x1 - g.x) <= 14));
+    });
+    if (!cols.length && closingValue) cols = clusterEdges(edges, 14);
     if (!cols.length) return { columns: [], rows: [], period: '', lineCount: lines.length };
 
     function colOf(cell) {
@@ -191,7 +205,8 @@
       name = name.replace(/\s*R\$$/, '').trim() || name;
       if (used[name]) name += ' ' + (i + 1);
       used[name] = 1;
-      return { id: 'c' + i, name: name, saldo: /saldo/i.test(name) };
+      var saldo = closingValue ? i === colOf(closingValue) : /saldo/i.test(name);
+      return { id: 'c' + i, name: saldo && closingValue ? 'Saldo' : name, saldo: saldo };
     });
 
     // 4) Colunas de texto pelo cabeçalho (Lançamentos, Razão Social, CNPJ/CPF...).
@@ -239,7 +254,7 @@
         texts.push({ c: c, y: l.y });
       });
       if (l.candidate && nValues && lastDate) {
-        var row = { dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy, values: values, page: l.page, y: l.y, parts: texts };
+        var row = { dd: lastDate.dd, mm: lastDate.mm, yyyy: lastDate.yyyy, values: values, page: l.page, y: l.y, parts: texts, closing: l === closingLine };
         rows.push(row); rowLines.push(li);
       } else {
         l.loose = texts;
@@ -266,7 +281,8 @@
       r.hist = j(f.hist); r.party = j(f.party); r.taxId = j(f.taxId); r.origin = j(f.origin);
       r.desc = [r.hist, r.party].filter(Boolean).join(' · ');
       r.extra = [r.origin ? 'Ag/origem ' + r.origin : '', r.taxId ? 'CPF/CNPJ ' + r.taxId : ''].filter(Boolean).join(' · ');
-      r.saldo = /\bsaldo\b/i.test(r.desc);
+      r.saldo = r.closing || /\bsaldo\b/i.test(r.desc);
+      delete r.closing;
       var sig = r.dd + '/' + r.mm + '|' + r.desc + '|' + JSON.stringify(r.values);
       occ[sig] = (occ[sig] || 0) + 1;
       r.id = hash(sig + '#' + occ[sig]);

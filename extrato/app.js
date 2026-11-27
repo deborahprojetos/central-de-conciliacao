@@ -106,12 +106,12 @@
     if (maxR >= 0) ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
   }
   // Lê PDF ou Excel e devolve { columns, rows, period, account }.
-  async function readAny(file) {
+  async function readAny(file, bank) {
     var kind = fileKind(file.name);
     if (kind === 'pdf') {
       var items = await readPdf(file);
       if (!items.length) throw new Error('PDF sem texto selecionável (imagem).');
-      var p = Core.parseStatement(items);
+      var p = Core.parseStatement(items, bank);
       var firstPage = items.filter(function (it) { return it.page === 1; });
       p.account = Core.findAccount(firstPage);
       p.accountBase = Core.findAccount(firstPage, true);
