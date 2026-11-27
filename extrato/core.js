@@ -120,8 +120,75 @@
     return (h >>> 0).toString(36);
   }
 
+  function parseSicoob(lines) {
+    var texts = lines.map(function (line) {
+      return line.tokens.map(function (token) { return token.t; }).join(' ');
+    });
+    var start = texts.findIndex(function (text) { return /^hist[oó]rico de movimenta[cç][aã]o$/i.test(text); });
+    if (start === -1) return null;
+    var headerIndex = texts.findIndex(function (text, i) {
+      return i > start && /^data\s+documento\s+hist[oó]rico\s+valor(?:\s|$)/i.test(text);
+    });
+    if (headerIndex === -1) return null;
+
+    var periodHeader = texts.slice(0, start).join('\n').match(/per[ií]odo\s*:\s*(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    var end = texts.findIndex(function (text, i) {
+      return i > headerIndex && /^(?:resumo|encargos|outras informa[cç][oõ]es|informa[cç][oõ]es)(?:\s|$)/i.test(text);
+    });
+    var historyX = lines[headerIndex].tokens[2].x0;
+    var rows = [], current = null, date = null, seen = Object.create(null);
+    var amountPattern = /^([+-]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})\s*([CD])?\s*\*?$/i;
+    lines.slice(headerIndex + 1, end === -1 ? lines.length : end).forEach(function (line) {
+      var tokens = line.tokens;
+      var dated = DATE.exec(tokens[0].t);
+      var amountAt = tokens.findIndex(function (token) { return token.t === 'R$'; });
+      if (dated) { date = dated; current = null; }
+      var amountText = amountAt === -1 ? '' : tokens.slice(amountAt + 1).map(function (token) { return token.t; }).join(' ');
+      var amount = amountPattern.exec(amountText);
+      var history = tokens.slice(dated ? 1 : 0, amountAt === -1 ? tokens.length : amountAt)
+        .filter(function (token) { return token.x0 >= historyX - 3; })
+        .map(function (token) { return token.t; }).join(' ');
+      if (!amount) {
+        if (!dated && current && history && tokens[0].x0 >= historyX - 3) {
+          current.hist += ' ' + history;
+          current.desc = current.hist;
+        }
+        return;
+      }
+      current = null;
+      if (!date || !history || /^saldo\s+bloqu/i.test(history)) return;
+      var saldo = /^saldo\s+(?:anterior|do dia)\b/i.test(history);
+      var value = parseMoney(amount[1]);
+      var values = {};
+      values[saldo ? 'c1' : 'c0'] = /^d$/i.test(amount[2] || '') ? -Math.abs(value) : value;
+      var yyyy = date[3] && (date[3].length === 2 ? '20' + date[3] : date[3]);
+      if (!yyyy && periodHeader) {
+        var afterEnd = date[2] + date[1] > periodHeader[5] + periodHeader[4];
+        yyyy = afterEnd ? String(Number(periodHeader[6]) - 1) : periodHeader[6];
+      }
+      current = { dd: date[1], mm: date[2], yyyy: yyyy, hist: history, desc: history, values: values, saldo: saldo };
+      rows.push(current);
+    });
+    var period = periodHeader ? periodHeader[6] + '-' + periodHeader[5] : guessPeriod(lines, rows);
+    rows.forEach(function (row) {
+      var year = row.yyyy || period.slice(0, 4);
+      row.date = row.dd + '/' + row.mm + (year ? '/' + year : '');
+      var signature = row.date + '|' + row.desc + '|' + JSON.stringify(row.values);
+      seen[signature] = (seen[signature] || 0) + 1;
+      row.id = hash(signature + '#' + seen[signature]);
+    });
+    return markSaldoAt({ columns: [
+      { id: 'c0', name: 'Valor', saldo: false },
+      { id: 'c1', name: 'Saldo', saldo: true }
+    ], rows: rows, period: period });
+  }
+
   function parseStatement(items, bank) {
     var lines = groupLines(tokenize(items));
+    if (/^sicoob/.test(bank || '') || items.some(function (item) { return /\bsicoob\b/i.test(item.str); })) {
+      var sicoob = parseSicoob(lines);
+      if (sicoob) return sicoob;
+    }
     lines.forEach(function (l) { l.cells = classify(l); });
     var isBB = /^(?:bb|bancodobrasil)$/.test(bank || '') || lines.some(function (l) {
       return /\bbanco do brasil\b/i.test(l.tokens.map(function (t) { return t.t; }).join(' '));
@@ -464,7 +531,8 @@
   // Agência e conta no cabeçalho do PDF (para identificar a empresa).
   function findAccount(items, omitCheckDigit) {
     var text = items.map(function (it) { return it.str; }).join(' ').replace(/\s+/g, ' ');
-    var ag = /ag[eê]ncia\s*[:.\-]?\s*(\d{3,5})/i.exec(text) || /\bag\.?\s*[:\-]?\s*(\d{3,5})\b/i.exec(text);
+    var ag = /ag[eê]ncia\s*[:.\-]?\s*(\d{3,5})/i.exec(text) || /\bag\.?\s*[:\-]?\s*(\d{3,5})\b/i.exec(text)
+      || (/\bsicoob\b/i.test(text) && /\bcooperativa\s*:\s*(\d{3,5})\b/i.exec(text));
     var cc = /conta(?:\s+corrente)?\s*[:.\-]?\s*(\d[\d.\-]{3,15}\d)/i.exec(text) || /\bc\/?c\.?\s*[:\-]?\s*(\d[\d.\-]{3,15}\d)/i.exec(text);
     if (!ag || !cc) return '';
     var number = omitCheckDigit ? cc[1].replace(/-\d$/, '') : cc[1];
