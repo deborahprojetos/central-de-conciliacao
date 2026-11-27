@@ -193,10 +193,15 @@
     var isBB = /^(?:bb|bancodobrasil)$/.test(bank || '') || lines.some(function (l) {
       return /\bbanco do brasil\b/i.test(l.tokens.map(function (t) { return t.t; }).join(' '));
     });
-    var closingLine = isBB ? lines.find(function (l) {
+    var isBradesco = /^(?:banco)?bradesco$/.test(bank || '') || (!bank && lines.some(function (l) {
+      return l.page === 1 && /^(?:banco\s+)?bradesco(?:\s+(?:s\.?a\.?|net empresa|internet banking))?$/i.test(
+        l.tokens.map(function (t) { return t.t; }).join(' '));
+    }));
+    var closingLine = (isBB || isBradesco) ? lines.find(function (l) {
       var label = l.cells.filter(function (c) { return c.kind === 'text'; })
         .map(function (c) { return c.t; }).join(' ');
-      return /^(?:\d+\s+)*s\s*a\s*l\s*d\s*o$/i.test(label) &&
+      var closingLabel = isBradesco ? /^total\s*:?$/i : /^(?:\d+\s+)*s\s*a\s*l\s*d\s*o$/i;
+      return closingLabel.test(label) &&
         l.cells.some(function (c) { return c.kind === 'money'; });
     }) : null;
     if (closingLine) lines = lines.slice(0, lines.indexOf(closingLine) + 1);
@@ -221,18 +226,22 @@
           !l.cells.some(function (c) { return /^data$/i.test(c.t); })) return;
       var headers = [];
       l.cells.forEach(function (c, i) {
-        if (!/^(valor|saldo)$/i.test(c.t)) return;
+        if (!(isBradesco ? /^(valor|cr[eé]dito|d[eé]bito|saldo)$/i : /^(valor|saldo)$/i).test(c.t)) return;
         var currency = l.cells[i + 1];
         var right = currency && /^\(?R\$\)?$/i.test(currency.t) && currency.x0 - c.x1 < 10 ? currency.x1 : c.x1;
         headers.push({ name: c.t, x: right, min: c.x0 });
       });
-      if (headers.length === 2 && /^valor$/i.test(headers[0].name) && /^saldo$/i.test(headers[1].name)) {
+      var layout = headers.map(function (header) {
+        return header.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      }).join(' ');
+      if (layout === 'valor saldo' || (isBradesco && layout === 'credito debito saldo')) {
         explicitHeader = l;
         explicitColumns = headers;
       }
     });
     var minCount = Math.max(2, Math.floor(candidateCount * 0.04));
-    var closingValue = closingLine && closingLine.cells.find(function (c) { return c.kind === 'money'; });
+    var closingAmounts = closingLine ? closingLine.cells.filter(function (c) { return c.kind === 'money'; }) : [];
+    var closingValue = isBradesco ? (closingAmounts.length === 3 ? closingAmounts[2] : null) : closingAmounts[0];
     var cols = explicitHeader ? explicitColumns : clusterEdges(edges, 14).filter(function (g) {
       return g.count >= minCount || (closingValue && candidateCount >= 2 && (candidateCount <= 3 || Math.abs(closingValue.x1 - g.x) <= 14));
     });
@@ -272,7 +281,8 @@
       name = name.replace(/\s*R\$$/, '').trim() || name;
       if (used[name]) name += ' ' + (i + 1);
       used[name] = 1;
-      var saldo = closingValue ? i === colOf(closingValue) : /saldo/i.test(name);
+      var saldo = closingValue && (!isBradesco || !names.some(function (label) { return /saldo/i.test(label); }))
+        ? i === colOf(closingValue) : /saldo/i.test(name);
       return { id: 'c' + i, name: saldo && closingValue ? 'Saldo' : name, saldo: saldo };
     });
 
@@ -316,7 +326,12 @@
         if (c === dateCell) return;
         if (c.kind === 'money') {
           var ci = colOf(c);
-          if (ci >= 0 && values['c' + ci] === undefined) { values['c' + ci] = c.v; nValues++; return; }
+          if (ci >= 0 && values['c' + ci] === undefined) {
+            if (!isBradesco || l !== closingLine || columns[ci].saldo) {
+              values['c' + ci] = c.v; nValues++;
+            }
+            return;
+          }
         }
         texts.push({ c: c, y: l.y });
       });
