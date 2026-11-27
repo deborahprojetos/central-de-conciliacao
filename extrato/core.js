@@ -429,12 +429,13 @@
   }
 
   // Agência e conta no cabeçalho do PDF (para identificar a empresa).
-  function findAccount(items) {
+  function findAccount(items, omitCheckDigit) {
     var text = items.map(function (it) { return it.str; }).join(' ').replace(/\s+/g, ' ');
     var ag = /ag[eê]ncia\s*[:.\-]?\s*(\d{3,5})/i.exec(text) || /\bag\.?\s*[:\-]?\s*(\d{3,5})\b/i.exec(text);
     var cc = /conta(?:\s+corrente)?\s*[:.\-]?\s*(\d[\d.\-]{3,15}\d)/i.exec(text) || /\bc\/?c\.?\s*[:\-]?\s*(\d[\d.\-]{3,15}\d)/i.exec(text);
     if (!ag || !cc) return '';
-    return ag[1] + '/' + cc[1].replace(/\D/g, '');
+    var number = omitCheckDigit ? cc[1].replace(/-\d$/, '') : cc[1];
+    return ag[1] + '/' + number.replace(/\D/g, '');
   }
 
   // Coluna Débito/Saída é sempre saída (negativo); Crédito/Entrada é sempre entrada (positivo).

@@ -59,15 +59,20 @@
   async function readPdf(file) {
     if (!window.pdfjsLib) throw new Error('O leitor de PDF não carregou. Verifique a conexão e tente de novo.');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    var pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    var task = pdfjsLib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false });
     var items = [];
-    for (var p = 1; p <= pdf.numPages; p++) {
-      var page = await pdf.getPage(p);
-      var content = await page.getTextContent();
-      content.items.forEach(function (it) {
-        if (!it.str || !it.str.trim()) return;
-        items.push({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, page: p });
-      });
+    try {
+      var pdf = await task.promise;
+      for (var p = 1; p <= pdf.numPages; p++) {
+        var page = await pdf.getPage(p);
+        var content = await page.getTextContent();
+        content.items.forEach(function (it) {
+          if (!it.str || !it.str.trim()) return;
+          items.push({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, page: p });
+        });
+      }
+    } finally {
+      await task.destroy();
     }
     return items;
   }
@@ -98,7 +103,9 @@
       var items = await readPdf(file);
       if (!items.length) throw new Error('PDF sem texto selecionável (imagem).');
       var p = Core.parseStatement(items);
-      p.account = Core.findAccount(items.filter(function (it) { return it.page === 1; }));
+      var firstPage = items.filter(function (it) { return it.page === 1; });
+      p.account = Core.findAccount(firstPage);
+      p.accountBase = Core.findAccount(firstPage, true);
       return p;
     }
     if (kind === 'sheet') {
