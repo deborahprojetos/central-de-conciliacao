@@ -16,7 +16,6 @@
   const handleKey = 'extratos-dir-mensal';
   const foldersKey = 'extratos-pastas-mensais';
   const parserVersion = 1;
-  const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const statementName = /^1\s+extrato(?:\s+(\d+(?:[.-]\d+)*))?\.pdf$/i;
   const dayName = /^(0[1-9]|[12]\d|3[01])[ ._-]+(0[1-9]|1[0-2])$/;
 
@@ -128,7 +127,7 @@
     setOptions(file, statements.map(entry => {
       const number = entry.accountHint || (entry.parsed?.account || '').split('/')[1];
       const label = number ? 'Conta ' + number + ' · ' + entry.handle.name : entry.handle.name;
-      return [entry.path, label + (entry.error ? ' · Conferir' : '')];
+      return [entry.path, label + (entry.error || entry.warning ? ' · Conferir' : '')];
     }), 'Sem extratos');
 
     const selected = statements.find(entry => entry.path === file.value);
@@ -139,37 +138,13 @@
       status('monthlyFileStatus', selected.error, true);
     } else {
       const count = selected.parsed.rows.filter(row => !row.saldo).length;
-      status('monthlyFileStatus', count + (count === 1 ? ' movimentação' : ' movimentações'));
+      status('monthlyFileStatus', count + (count === 1 ? ' movimentação' : ' movimentações') + (selected.warning ? ' · ' + selected.warning : ''), selected.warning);
     }
-    renderStatement(selected?.error ? null : selected?.parsed);
-  }
-
-  function renderStatement(parsed) {
-    $('monthlyTable').hidden = !parsed;
-    if (!parsed) {
-      $('monthlyHead').replaceChildren();
-      $('monthlyRows').replaceChildren();
-      return;
-    }
-    const columns = parsed.columns;
-    const header = document.createElement('tr');
-    for (const label of ['Data', 'Lançamento', 'Razão social', 'CNPJ/CPF', ...columns.map(col => col.name)]) {
-      const th = document.createElement('th');
-      th.scope = 'col';
-      th.textContent = label;
-      header.append(th);
-    }
-    $('monthlyHead').replaceChildren(header);
-    const rows = document.createDocumentFragment();
-    for (const row of parsed.rows) {
-      const tr = rows.appendChild(document.createElement('tr'));
-      if (row.saldo) tr.className = 'is-saldo';
-      const values = columns.map(col => typeof row.values[col.id] === 'number' ? brl.format(row.values[col.id]) : '—');
-      for (const value of [row.date, row.hist || row.desc, row.party, row.taxId, ...values]) {
-        tr.insertCell().textContent = value || '—';
-      }
-    }
-    $('monthlyRows').replaceChildren(rows);
+    App.showFolderStatement(selected && !selected.error ? {
+      key: 'cf:extrato:conferencia:' + JSON.stringify([folderId, selected.path]),
+      name: selected.handle.name,
+      parsed: selected.parsed
+    } : null);
   }
 
   async function read(entry) {
@@ -188,9 +163,10 @@
       }
       const number = entry.parsed.account.split('/')[1];
       const base = entry.parsed.accountBase.split('/')[1];
-      const hint = entry.accountHint.replace(/\D/g, '');
-      if (hint && number && hint !== number && hint !== base) {
-        throw new Error('A conta do PDF difere do número no nome do arquivo. Confira o original.');
+      const normalize = value => (value || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+      const hint = normalize(entry.accountHint);
+      if (hint && number && hint !== normalize(number) && hint !== normalize(base)) {
+        entry.warning = 'Conta no cabeçalho: ' + entry.parsed.account + '. Confira com o nome do arquivo.';
       }
     } catch (error) {
       entry.error = error.message || 'Não foi possível ler o PDF.';
@@ -239,7 +215,7 @@
       }
       entries = next;
       cache = new Map(statements.filter(entry => entry.version === parserVersion).map(entry => [entry.path, entry]));
-      const failures = next.filter(entry => entry.error).length;
+      const failures = next.filter(entry => entry.error || entry.warning).length;
       const available = statements.filter(entry => !entry.error);
       const reused = available.filter(entry => entry.reused).length;
       const unsaved = statements.some(entry => entry.unsaved);

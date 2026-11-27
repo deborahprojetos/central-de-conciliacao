@@ -94,7 +94,6 @@ main.ex-main { width: 100% !important; margin: 0 !important; padding: 18px 0 40p
 .fd-status.is-error { color: var(--ex-neg); font-weight: 600; }
 .fd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .monthly-toolbar { margin-top: 14px; margin-bottom: 0; }
-#monthlyTable { max-height: 520px; margin-top: 10px; }
 .ex-quiet { color: var(--ex-muted); }
 .fd-card.is-unsupported .fd-status { color: var(--ex-muted); }
 .fd-pending { margin: 14px 0 0; padding: 0; list-style: none; }
