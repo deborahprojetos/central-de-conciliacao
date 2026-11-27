@@ -11,15 +11,16 @@
   var STATUSES = ['Pendente', 'Em análise'];
 
   var company = Shell ? Shell.company() : null;
-  var KEY = company ? 'cf:extrato:' + company : null;
   var state = load();
-  (function migrateFilters() {
+  function migrateFilters() {
     var ui = state.ui || (state.ui = {});
     if (ui.status) { ui.cf = ui.cf || {}; ui.cf.status = [ui.status === '-' ? '(Sem status)' : ui.status]; }
     if (ui.resp) { ui.cf = ui.cf || {}; ui.cf.resp = [ui.resp === '-' ? '(Vazias)' : ui.resp]; }
     delete ui.status; delete ui.resp;
-  })();
+  }
+  migrateFilters();
   var pending = null; // extrato lido e ainda não salvo
+  var importRequest = 0;
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -289,12 +290,14 @@
 
   async function handleFile(file) {
     if (!file) return;
-    if (!KEY) { message('Escolha a empresa antes de importar.', 'error'); return; }
+    if (!company) { message('Escolha a empresa antes de importar.', 'error'); return; }
+    var request = ++importRequest;
     $('fileName').textContent = file.name;
     message('Lendo ' + file.name + '…');
     $('preview').hidden = true; pending = null;
     try {
       var parsed = await readAny(file);
+      if (request !== importRequest) return;
       if (!parsed.rows.length) throw new Error('Nenhum lançamento com data e valor foi encontrado neste arquivo.');
       pending = { fileName: file.name, parsed: parsed };
       var period = parsed.period || new Date().toISOString().slice(0, 7);
@@ -305,9 +308,9 @@
       $('preview').hidden = false;
       message('');
     } catch (err) {
-      message(err && err.message ? err.message : 'Não foi possível ler o PDF.', 'error');
+      if (request === importRequest) message(err && err.message ? err.message : 'Não foi possível ler o PDF.', 'error');
     } finally {
-      $('pdfFile').value = '';
+      if (request === importRequest) $('pdfFile').value = '';
     }
   }
   function updateSaveLabel() {
@@ -751,12 +754,16 @@
       updateRespOptions(current());
     }
   });
-  var respTimer = null;
+  var respTimer = null, saveResponsibility = null;
   $('tbody').addEventListener('input', function (e) {
     if (!e.target.classList.contains('ex-resp')) return;
     var tr = e.target.closest('tr[data-id]'), val = e.target.value;
     clearTimeout(respTimer);
-    respTimer = setTimeout(function () { setMark(tr.getAttribute('data-id'), { resp: val.trim() }); }, 500);
+    saveResponsibility = function () {
+      setMark(tr.getAttribute('data-id'), { resp: val.trim() });
+      saveResponsibility = null;
+    };
+    respTimer = setTimeout(saveResponsibility, 500);
   });
   $('deleteMonth').addEventListener('click', function () {
     var m = state.lastMonth; if (!m) return;
@@ -778,6 +785,23 @@
       return res;
     },
     reload: function () { state = load(); render(); },
+    selectCompany: function (id) {
+      if (id === company) return;
+      clearTimeout(respTimer);
+      if (saveResponsibility) saveResponsibility();
+      importRequest++;
+      pending = null;
+      $('preview').hidden = true;
+      $('pdfFile').value = '';
+      $('fileName').textContent = 'Nenhum arquivo selecionado';
+      $('search').value = '';
+      closePop();
+      message('');
+      company = id;
+      state = load();
+      migrateFilters();
+      render();
+    },
     company: function () { return company; }
   };
 
